@@ -1,0 +1,76 @@
+{% load staticfiles %}
+
+<!doctype html>
+
+<html>
+<head>
+
+<link rel="stylesheet" type="text/css" href="{% static "js/jquery-ui-1.11.4.custom/jquery-ui.css" %}" />
+<link rel="stylesheet" type="text/css" href="{% static "style/budget.css" %}" />
+
+</head>
+<body>
+
+<h1>Budget Badger</h1>
+
+<ul>
+	<li><a href="{% url "projection" %}">Projection</a></li>
+	<li><a href="{% url "transactions" %}">Income/Expense Management</a></li>
+</ul>	
+
+	{% if messages %}
+	<ul class="messages">
+	    {% for message in messages %}
+	    <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+	    {% endfor %}
+	</ul>
+	{% endif %}
+
+	{% block content %}{% endblock %}
+
+
+<script type="text/javascript" src="{% static "js/jquery-1.11.3.js" %}"></script>
+<script type="text/javascript" src="{% static "js/jquery-ui-1.11.4.custom/jquery-ui.js" %}"></script>
+
+<script type="text/javascript" src="{% static "js/budget.js" %}"></script>
+
+<script type="text/javascript">
+
+	// using jQuery
+	function getCookie(name) {
+	    var cookieValue = null;
+	    if (document.cookie && document.cookie != '') {
+	        var cookies = document.cookie.split(';');
+	        for (var i = 0; i < cookies.length; i++) {
+	            var cookie = jQuery.trim(cookies[i]);
+	            // Does this cookie string begin with the name we want?
+	            if (cookie.substring(0, name.length + 1) == (name + '=')) {
+	                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+	                break;
+	            }
+	        }
+	    }
+	    return cookieValue;
+	}
+
+	var csrftoken = getCookie('csrftoken');
+	function csrfSafeMethod(method) {
+	    // these HTTP methods do not require CSRF protection
+	    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+	}
+
+	$.ajaxSetup({
+	    beforeSend: function(xhr, settings) {
+	        if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+	            xhr.setRequestHeader("X-CSRFToken", csrftoken);
+	        }
+	    }
+	});
+	
+</script>
+
+{% block script %}{% endblock %}
+
+</body>
+
+</html>

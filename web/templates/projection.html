@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h1>Projection</h1>
+
+<div>
+	<form id="run_projections">
+		{% csrf_token %}
+		<div>
+			Starting cash: <input type="text" name="starting_cash" value="" />
+		</div>
+		<div>
+			Minimum balance: <input type="text" name="minimum_balance" value="" />
+		</div>
+		<input type="submit" value="Run Projections" />
+	</form>
+</div>
+
+<table>
+
+{% for payment in payments %}
+	<tr>
+		<td>{{payment.payment_at}}</td>
+		<td>{{payment.transaction.name}}</td>
+		<td>{{payment.transaction.amount}}</td>
+		<td>{{payment.overpayment}}</td>
+		<td>{{payment.balance}}</td>
+	</tr>
+{% endfor %}
+
+{% endblock %}
+
+{% block script %}
+
+	<script type="text/javascript">
+
+		$(document).ready(function(){
+
+			$(document).on("submit", "#run_projections", function(e){
+
+				$.ajax({
+					url: "{% url "run_projections" %}",
+					type: 'POST',
+					data: $(this).serialize(),
+					dataType: "json",
+					success: function(data, textStatus, jqXHR){
+						if(data.error){
+							alert(data.message);
+						}
+						document.location = document.location;
+					},
+					error: function(jqXHR, textStatus, errorThrown){
+
+					}
+				});
+
+				return false;
+			});
+
+		});
+
+	</script>
+
+{% endblock %}

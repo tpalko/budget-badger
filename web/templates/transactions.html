@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Income/Expense Management</h2>
+
+<div>
+	{{ avg_monthly_in|dec_out }}
+	{{ avg_monthly_out|dec_out }}
+	{{ avg_monthly_balance|dec_out }}
+</div>
+
+<a href="{% url 'transaction_new' %}">new transaction</a>
+
+<table>
+{% for r in income_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.period }}</td>
+		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+	</tr>
+{% endfor %}
+</table>
+
+<table>
+{% for r in debt_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>{{ r.interest_rate }}</td>
+		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+	</tr>
+{% endfor %}
+</table>
+
+<table>
+{% for r in utility_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.period }}</td>
+		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+	</tr>
+{% endfor %}
+</table>
+
+
+
+{% endblock %}
