@@ -18,12 +18,18 @@
 </div>
 
 <table>
-
+	<tr>
+		<th>Payment At</th>
+		<th>Transaction</th>
+		<th>Amount</th>
+		<th>Overpayment</th>
+		<th>Balance</th>
+	</tr>
 {% for payment in payments %}
 	<tr>
 		<td>{{payment.payment_at}}</td>
 		<td>{{payment.transaction.name}}</td>
-		<td>{{payment.transaction.amount}}</td>
+		<td>{{payment.transaction.real_amount}}</td>
 		<td>{{payment.overpayment}}</td>
 		<td>{{payment.balance}}</td>
 	</tr>

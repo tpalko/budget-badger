@@ -12,3 +12,7 @@ def dec_out(number):
 		out = "<span class='negative'>($%s)</span>" % -number
 	
 	return mark_safe(out)
+
+@register.filter()
+def map(items, attribute):
+	return ",".join([str(i.__getattribute__(attribute)) for i in items])

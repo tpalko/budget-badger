@@ -20,9 +20,11 @@ from web import views
 urlpatterns = [
     url(r'^$', views.home, name="home"),
     url(r'^admin/', include(admin.site.urls)),
-    url(r'^transaction/$', views.transaction_new, name="transaction_new"),
+    #url(r'^transaction/$', views.transaction_new, name="transaction_new"),
+    url(r'^transaction/new/(?P<transaction_type>[a-z]+)/$', views.transaction_new, name="transaction_new"),
     url(r'^transaction/(?P<name_slug>[A-Za-z0-9_]+)/$', views.transaction_edit, name="transaction_edit"),
     url(r'^transactions/$', views.transactions, name="transactions"),
     url(r'^projection/$', views.projection, name="projection"),
+    url(r'^creditcardexpenses/$', views.creditcardexpenses, name="creditcardexpenses"),
     url(r'^run_projections/$', views.run_projections, name="run_projections")
 ]

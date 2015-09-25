@@ -5,7 +5,30 @@
 <form method="POST">
 	{% csrf_token %}
 	{{ transaction_form.as_p }}
-	<input type="submit">
+	<input type="submit" value="Save">
 </form>
+
+{% endblock %}
+
+{% block script %}
+
+<script type="text/javascript">
+	
+	$(document).ready(function(){
+		if($("#id_transaction_type").val() != "creditcard"){
+			$("#id_closing_date").parent().hide();
+		}
+	});
+
+	$(document).on("change", "#id_transaction_type", function(e){
+		
+		if($(this).val() == "creditcard"){
+			$("#id_closing_date").parent().show();
+		}else{
+			$("#id_closing_date").parent().hide();
+		}
+	});
+
+</script>
 
 {% endblock %}

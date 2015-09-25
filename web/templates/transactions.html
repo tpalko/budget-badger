@@ -6,14 +6,26 @@
 <h2>Income/Expense Management</h2>
 
 <div>
-	{{ avg_monthly_in|dec_out }}
-	{{ avg_monthly_out|dec_out }}
-	{{ avg_monthly_balance|dec_out }}
+	Avg. Out: {{ avg_monthly_in|dec_out }}<br />
+	Avg. In: {{ avg_monthly_out|dec_out }}<br />
+	Avg. Balance: {{ avg_monthly_balance|dec_out }}
 </div>
 
-<a href="{% url 'transaction_new' %}">new transaction</a>
+<h3>Income</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="income" %}">new income</a>
+</div>
 
 <table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th></th>
+	</tr>
 {% for r in income_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
@@ -26,7 +38,24 @@
 {% endfor %}
 </table>
 
+<h3>Debt - {{total_debt|dec_out}}</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="debt" %}">new debt</a>
+</div>
+
 <table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th>Interest Rate</th>
+		<th>Principal</th>
+		<th>Principal At</th>
+		<th></th>
+	</tr>
 {% for r in debt_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
@@ -35,12 +64,28 @@
 		<td>{{ r.cycle_date }}</td>
 		<td>{{ r.period }}</td>
 		<td>{{ r.interest_rate }}</td>
+		<td>{{ r.principal }}</td>
+		<td>{{ r.principal_at }}</td>
 		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
 	</tr>
 {% endfor %}
 </table>
 
+<h3>Utility</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="utility" %}">new utility</a>
+</div>
+
 <table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th></th>
+	</tr>
 {% for r in utility_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
@@ -48,6 +93,40 @@
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_date }}</td>
 		<td>{{ r.period }}</td>
+		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Credit Cards</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="creditcard" %}">new credit card</a> <br />
+	<a href="{% url 'creditcardexpenses' %}">manage credit card expenses</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Expense Total</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th>Interest Rate</th>
+		<th>Closing Date</th>
+		<th>Expenses</th>
+		<th></th>
+	</tr>
+{% for r in creditcard_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>{{ r.interest_rate }}</td>
+		<td>{{ r.closing_date }}</td>
+		<td>{{ r.creditcardtransaction.creditcardexpense_set.all|map:"name" }}</td>
 		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
 	</tr>
 {% endfor %}

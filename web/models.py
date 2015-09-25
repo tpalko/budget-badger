@@ -1,29 +1,40 @@
 from django.db import models
 import datetime
 from django.core.validators import MinValueValidator, MaxValueValidator
+import logging
 
-# Create your models here.
+logger = logging.getLogger(__name__)
 
 class Transaction(models.Model):
 	
 	TRANSACTION_TYPE_INCOME = 'income'
 	TRANSACTION_TYPE_UTILITY = 'utility'
 	TRANSACTION_TYPE_DEBT = 'debt'
+	TRANSACTION_TYPE_CREDITCARD = 'creditcard'
 
 	type_choices = (
 		(TRANSACTION_TYPE_INCOME, 'Income'),
 		(TRANSACTION_TYPE_UTILITY, 'Utility'),
-		(TRANSACTION_TYPE_DEBT, 'Debt')
+		(TRANSACTION_TYPE_DEBT, 'Debt'),
+		(TRANSACTION_TYPE_CREDITCARD, 'Credit Card')
 	)
 
 	name = models.CharField(max_length=200, unique=True)
-	amount = models.DecimalField(decimal_places=2, max_digits=20)
-	interest_rate = models.DecimalField(decimal_places=2, max_digits=5, default=0)
+	amount = models.DecimalField(decimal_places=2, max_digits=20)	
 	transaction_type = models.CharField(max_length=50, choices=type_choices, default=TRANSACTION_TYPE_DEBT)
-	'''
-	class Meta:
-		abstract = True
-	'''
+
+	def real_amount(self):
+
+		if self.transaction_type == Transaction.TRANSACTION_TYPE_CREDITCARD:
+			return self.recurringtransaction.creditcardtransaction.expense_total()
+		else:
+			return self.amount
+
+	def slug(self):
+		return self.name.replace(' ', '_')
+
+	def __unicode__(self):
+		return self.name
 
 class RecurringTransaction(Transaction):
 
@@ -69,12 +80,31 @@ class RecurringTransaction(Transaction):
 	period = models.CharField(max_length=50, choices=period_choices, default=PERIOD_MONTHLY)	
 	is_variable = models.BooleanField(null=False, default=False)
 
-	def slug(self):
-		return self.name.replace(' ', '_')
+class CreditCardTransaction(RecurringTransaction):
+	
+	interest_rate = models.DecimalField(decimal_places=2, max_digits=5, default=0)
+	closing_date = models.DateField(default=datetime.datetime.now())
+
+	def expense_total(self):
+		return sum([e.amount for e in self.creditcardexpense_set.all()])
+
+class DebtTransaction(RecurringTransaction):
+
+	principal = models.DecimalField(decimal_places=2, max_digits=20, default=0)
+	principal_at = models.DateField()
+	interest_rate = models.DecimalField(decimal_places=2, max_digits=5, default=0)
 
 class OneTimeTransaction(Transaction):
 	pass	
-	
+
+class CreditCardExpense(models.Model):
+	creditcardtransaction = models.ForeignKey(CreditCardTransaction)
+	name = models.CharField(max_length=50)
+	amount = models.DecimalField(decimal_places=2, max_digits=20, default=0)
+
+	def __unicode__(self):
+		return self.name
+
 class Period(models.Model):
 
 	#transactions = models.ManyToManyField(Transaction, through='PlannedPayment')

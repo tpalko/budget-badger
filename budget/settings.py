@@ -125,6 +125,10 @@ LOGGING = {
         'web.views': {
             'handlers': ['console'],
             'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG'),
+        },
+        'web.models': {
+            'handlers': ['console'],
+            'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG'),
         }
     },
 }
