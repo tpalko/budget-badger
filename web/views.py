@@ -104,11 +104,17 @@ def run_projections(request):
 		PlannedPayment.objects.all().delete()
 		Period.objects.all().delete()
 
-		six_months = (datetime.now() + timedelta(days=180)).date()
 		one_year = (datetime.now() + timedelta(days=365)).date()
 
 		for e in recurring_transactions:
 
+			'''
+			We split up handling recurring transactions into week-based and month-based schedules.
+			Week-based schedules assume a 'started at' date, and we advance to the first scheduled date after today before recording the payments.
+			Month-based schedules, if they have a 'started at' date, get advanced to the first scheduled date after today in whole months.
+				If no 'started at' date and the cycle date is yet-to-come this month, that becomes the first payment date.
+				If no 'started at' date and the cycle date has happened this month, the next 
+			'''
 			if e.period in RecurringTransaction.period_week_lengths:
 				payment_at = e.started_at
 				while payment_at < datetime.now().date():
