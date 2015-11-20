@@ -111,9 +111,10 @@ def run_projections(request):
 			'''
 			We split up handling recurring transactions into week-based and month-based schedules.
 			Week-based schedules assume a 'started at' date, and we advance to the first scheduled date after today before recording the payments.
-			Month-based schedules, if they have a 'started at' date, get advanced to the first scheduled date after today in whole months.
+			Month-based schedules tend to rely on a monthly 'cycle' date, so a 'started at' date is not required.
+				If they have a 'started at' date, that is taken to be the cycle date and we advance to the first scheduled date after today in whole months.
 				If no 'started at' date and the cycle date is yet-to-come this month, that becomes the first payment date.
-				If no 'started at' date and the cycle date has happened this month, the next 
+				If no 'started at' date and the cycle date has happened this month, the occurrence of the cycle date next month is the first payment.
 			'''
 			if e.period in RecurringTransaction.period_week_lengths:
 				payment_at = e.started_at
@@ -150,6 +151,7 @@ def run_projections(request):
 
 		while True:
 
+			# - First, calculate the running balance for all schedule transactions
 			planned_payments = PlannedPayment.objects.order_by('payment_at', 'transaction__amount')
 
 			running_balance = starting_cash
@@ -159,6 +161,8 @@ def run_projections(request):
 				planned_payment.balance = running_balance
 				planned_payment.save()
 
+			# - Next, find the transactions that align with the lowest balances
+			# - These are the transactions we want to use as indicators for how much we can overpay on debts
 			lowest_balance_transactions = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lt=one_year, balance__gt=minimum_balance).order_by('balance')
 
 			if len(lowest_balance_transactions) == 0:
@@ -170,10 +174,11 @@ def run_projections(request):
 
 			for lbt in lowest_balance_transactions:
 
-				next_highest_interest_payment = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lte=lbt.payment_at, transaction__id=highest_interest_debt.transaction_ptr_id).order_by('-transaction__recurringtransaction__debttransaction__interest_rate', 'payment_at').first()
+				# - find a payment for our chosen HID that occurs before this LBT to which we can apply our overpayment
+				next_highest_interest_payment = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lte=lbt.payment_at, transaction__id=highest_interest_debt.transaction_ptr_id).order_by('payment_at').first()
 
 				if next_highest_interest_payment:
-
+					
 					next_highest_interest_payment.overpayment = -(lbt.balance - minimum_balance)
 					next_highest_interest_payment.save()
 
