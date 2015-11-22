@@ -20,7 +20,7 @@ class RecurringTransactionForm(ModelForm):
 
 	class Meta:
 		model = RecurringTransaction
-		fields = ['name', 'amount','started_at', 'cycle_date','period', 'is_variable', 'transaction_type']
+		fields = ['name', 'amount','started_at', 'cycle_due_date','period', 'is_variable', 'transaction_type']
 
 	def __init__(self, *args, **kwargs):
 
@@ -54,13 +54,13 @@ class CreditCardTransactionForm(RecurringTransactionForm):
 	 
 	 class Meta:
 	 	model = CreditCardTransaction
-	 	fields = ['name', 'amount','started_at', 'cycle_date','period', 'interest_rate', 'is_variable', 'transaction_type', 'closing_date']
+	 	fields = ['name', 'amount','started_at', 'cycle_due_date','period', 'interest_rate', 'is_variable', 'transaction_type', 'cycle_billing_date']
 
 class DebtTransactionForm(RecurringTransactionForm):
 
 	class Meta:
 		model = DebtTransaction
-		fields = ['name', 'amount','started_at', 'cycle_date','period', 'interest_rate', 'is_variable', 'transaction_type', 'principal', 'principal_at']
+		fields = ['name', 'amount','started_at', 'cycle_due_date','period', 'interest_rate', 'is_variable', 'transaction_type', 'principal', 'principal_at']
 
 class BaseCreditCardExpenseFormSet(BaseModelFormSet):
 
@@ -133,10 +133,10 @@ def run_projections(request):
 					payment_at = e.started_at
 					while payment_at < datetime.now().date():
 						payment_at = payment_at.replace(month=next_month(payment_at, e.period))
-				elif e.cycle_date > datetime.now().day:
-					payment_at = datetime.now().replace(day=e.cycle_date).date()
-				elif e.cycle_date < datetime.now().day:
-					payment_at = datetime.now().replace(day=e.cycle_date, month=next_month(datetime.now(), e.period)).date()
+				elif e.cycle_due_date > datetime.now().day:
+					payment_at = datetime.now().replace(day=e.cycle_due_date).date()
+				elif e.cycle_due_date < datetime.now().day:
+					payment_at = datetime.now().replace(day=e.cycle_due_date, month=next_month(datetime.now(), e.period)).date()
 				
 				while payment_at <= one_year:
 					plannedpayment = PlannedPayment(transaction=e, payment_at=payment_at)

@@ -31,7 +31,7 @@
 		<td>{{ r.name }}</td>
 		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
 		<td>{{ r.started_at|date }}</td>
-		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
 		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
 	</tr>
@@ -61,7 +61,7 @@
 		<td>{{ r.name }}</td>
 		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
 		<td>{{ r.started_at|date }}</td>
-		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
 		<td>{{ r.interest_rate }}</td>
 		<td>{{ r.principal }}</td>
@@ -91,7 +91,7 @@
 		<td>{{ r.name }}</td>
 		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
 		<td>{{ r.started_at|date }}</td>
-		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
 		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
 	</tr>
@@ -122,10 +122,10 @@
 		<td>{{ r.name }}</td>
 		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %}</td>
 		<td>{{ r.started_at|date }}</td>
-		<td>{{ r.cycle_date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
 		<td>{{ r.interest_rate }}</td>
-		<td>{{ r.closing_date }}</td>
+		<td>{{ r.cycle_billing_date }}</td>
 		<td>{{ r.creditcardtransaction.creditcardexpense_set.all|map:"name" }}</td>
 		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
 	</tr>

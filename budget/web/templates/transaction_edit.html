@@ -16,16 +16,16 @@
 	
 	$(document).ready(function(){
 		if($("#id_transaction_type").val() != "creditcard"){
-			$("#id_closing_date").parent().hide();
+			$("#id_cycle_billing_date").parent().hide();
 		}
 	});
 
 	$(document).on("change", "#id_transaction_type", function(e){
 		
 		if($(this).val() == "creditcard"){
-			$("#id_closing_date").parent().show();
+			$("#id_cycle_billing_date").parent().show();
 		}else{
-			$("#id_closing_date").parent().hide();
+			$("#id_cycle_billing_date").parent().hide();
 		}
 	});
 
