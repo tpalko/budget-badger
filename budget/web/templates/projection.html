@@ -28,7 +28,7 @@
 {% for payment in payments %}
 	<tr>
 		<td>{{payment.payment_at}}</td>
-		<td>{{payment.transaction.name}}</td>
+		<td>{{payment.transaction.name}} {% if payment.transaction.transaction_type == 'single' %}{{payment.transaction.creditcardtransaction}}{% endif %}</td>
 		<td>{{payment.transaction.real_amount}}</td>
 		<td>{{payment.overpayment}}</td>
 		<td>{{payment.balance}}</td>

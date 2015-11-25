@@ -2,6 +2,8 @@
 
 {% block content %}
 
+<h2>{{new_or_edit}} {{transaction_type_or_name}}</h2>
+
 <form method="POST">
 	{% csrf_token %}
 	{{ transaction_form.as_p }}
@@ -14,19 +16,23 @@
 
 <script type="text/javascript">
 	
-	$(document).ready(function(){
-		if($("#id_transaction_type").val() != "creditcard"){
-			$("#id_cycle_billing_date").parent().hide();
+	function setPeriodVisibility(){
+
+		if($("#id_period").val() == "monthly"){
+			$("#id_cycle_due_date").parent().show();
+			$("#id_started_at").parent().hide();
+		}else{
+			$("#id_cycle_due_date").parent().hide();
+			$("#id_started_at").parent().show();
 		}
+	}
+	
+	$(document).ready(function(){
+		setPeriodVisibility();
 	});
 
-	$(document).on("change", "#id_transaction_type", function(e){
-		
-		if($(this).val() == "creditcard"){
-			$("#id_cycle_billing_date").parent().show();
-		}else{
-			$("#id_cycle_billing_date").parent().hide();
-		}
+	$(document).on("change", "#id_period", function(e){
+		setPeriodVisibility();
 	});
 
 </script>

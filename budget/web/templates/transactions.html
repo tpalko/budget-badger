@@ -6,8 +6,8 @@
 <h2>Income/Expense Management</h2>
 
 <div>
-	Avg. Out: {{ avg_monthly_in|dec_out }}<br />
-	Avg. In: {{ avg_monthly_out|dec_out }}<br />
+	Avg. In: {{ avg_monthly_in|dec_out }}<br />
+	Avg. Out: {{ avg_monthly_out|dec_out }}<br />
 	Avg. Balance: {{ avg_monthly_balance|dec_out }}
 </div>
 
@@ -110,10 +110,10 @@
 		<th>Name</th>
 		<th>Expense Total</th>
 		<th>Started At</th>
-		<th>Cycle Date</th>
+		<th>Due Date</th>
 		<th>Period</th>
 		<th>Interest Rate</th>
-		<th>Closing Date</th>
+		<th>Billing Date</th>
 		<th>Expenses</th>
 		<th></th>
 	</tr>
@@ -132,6 +132,29 @@
 {% endfor %}
 </table>
 
+<h3>Single Transactions</h3>
 
+<div>
+	<a href="{% url 'transaction_new' transaction_type="single" %}">new single transaction</a> <br />
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Date</th>
+		<th>Credit Card</th>
+		<th></th>
+	</tr>
+{% for r in single_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }}</td>
+		<td>{{ r.transaction_at|date }}</td>
+		<td>{{ r.creditcardtransaction }}</td>
+		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+	</tr>
+{% endfor %}
+</table>
 
 {% endblock %}
