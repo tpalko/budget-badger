@@ -2,6 +2,12 @@
 
 {% block content %}
 
+<style type="text/css">
+.payment-overpayment{
+	color: red;
+}
+</style>
+
 <h1>Projection</h1>
 
 <div>
@@ -26,7 +32,7 @@
 		<th>Balance</th>
 	</tr>
 {% for payment in payments %}
-	<tr>
+	<tr class="payment {% if payment.overpayment != 0 %}payment-overpayment{% endif %}">
 		<td>{{payment.payment_at}}</td>
 		<td>{{payment.transaction.name}} {% if payment.transaction.transaction_type == 'single' %}{{payment.transaction.creditcardtransaction}}{% endif %}</td>
 		<td>{{payment.transaction.real_amount}}</td>

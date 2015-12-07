@@ -146,7 +146,7 @@ def run_projections(request):
 				plannedpayment = PlannedPayment(transaction=s, payment_at=due_date)
 				plannedpayment.save()
 
-		recurring_transactions = RecurringTransaction.objects.all()
+		recurring_transactions = RecurringTransaction.objects.filter(is_active=True)
 		
 		one_year = (datetime.utcnow() + timedelta(days=365)).date()
 

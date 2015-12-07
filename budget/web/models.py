@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class RecurringTransaction(Transaction):
 		PERIOD_YEARLY: 1/12
 	}
 
-	started_at = models.DateField(auto_now_add=True, blank=True, null=True)
+	started_at = models.DateField(default=date.today, blank=True, null=True)
 	cycle_due_date = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)], default=1, blank=True, null=True)
 	period = models.CharField(max_length=50, choices=period_choices, default=PERIOD_MONTHLY)	
 	is_variable = models.BooleanField(null=False, default=False)
