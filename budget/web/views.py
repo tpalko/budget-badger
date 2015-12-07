@@ -20,7 +20,7 @@ class TransactionForm(ModelForm):
 
 	class Meta:
 		model = Transaction
-		fields = ['name', 'amount', 'transaction_type']
+		fields = ['name', 'amount', 'transaction_type', 'is_active']
 	
 	transaction_type = CharField(widget=HiddenInput())
 
@@ -41,7 +41,7 @@ class RecurringTransactionForm(TransactionForm):
 
 	class Meta:
 		model = RecurringTransaction
-		fields = ['name', 'amount','period', 'started_at', 'cycle_due_date','is_variable', 'transaction_type']
+		fields = ['name', 'amount', 'period', 'started_at', 'cycle_due_date', 'is_variable', 'transaction_type', 'is_active']
 
 	transaction_type = CharField(widget=HiddenInput())
 

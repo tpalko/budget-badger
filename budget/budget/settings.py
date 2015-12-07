@@ -83,6 +83,14 @@ DATABASES = {
         'PASSWORD': 'dev',
         'HOST': '127.0.0.1',
         'PORT': 3306
+    },
+    'frankenmint': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'budget',
+        'USER': 'dev',
+        'PASSWORD': 'dev',
+        'HOST': '192.168.1.2',
+        'PORT': 3306
     }
 }
 

@@ -16,6 +16,10 @@ def next_year(date, period):
 
 	return date.year
 
+class BudgetManager(models.Manager):
+	def all(self):
+		return super(BudgetManager,self).using('frankenmint').all()
+
 class Transaction(models.Model):
 	
 	TRANSACTION_TYPE_SINGLE = 'single'
@@ -35,6 +39,7 @@ class Transaction(models.Model):
 	name = models.CharField(max_length=200, unique=True)
 	amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)	
 	transaction_type = models.CharField(max_length=50, choices=type_choices, default=TRANSACTION_TYPE_DEBT)
+	is_active = models.BooleanField(null=False, default=True)
 
 	def real_amount(self):
 
@@ -88,7 +93,7 @@ class RecurringTransaction(Transaction):
 		PERIOD_YEARLY: 1/12
 	}
 
-	started_at = models.DateField(default=datetime.now(), blank=True, null=True)
+	started_at = models.DateField(auto_now_add=True, blank=True, null=True)
 	cycle_due_date = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)], default=1, blank=True, null=True)
 	period = models.CharField(max_length=50, choices=period_choices, default=PERIOD_MONTHLY)	
 	is_variable = models.BooleanField(null=False, default=False)
