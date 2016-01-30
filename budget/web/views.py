@@ -209,6 +209,7 @@ def run_projections(request):
 	except:
 		error = True
 		message = str(sys.exc_info()[1])
+		logger.error(sys.exc_info()[0])
 		logger.error(message)
 		traceback.print_tb(sys.exc_info()[2])
 
