@@ -2,6 +2,8 @@ from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
 import logging
 from datetime import datetime, timedelta, date
+from decimal import *
+import calendar
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +87,12 @@ class RecurringTransaction(Transaction):
 	}
 
 	period_monthly_occurrence = {
-		PERIOD_WEEKLY: 52/12,
-		PERIOD_BIWEEKLY: 26/12,
-		PERIOD_MONTHLY: 1,
-		PERIOD_QUARTERLY: 1/3,
-		PERIOD_SEMIYEARLY: 1/6,
-		PERIOD_YEARLY: 1/12
+		PERIOD_WEEKLY: Decimal(52.0/12),
+		PERIOD_BIWEEKLY: Decimal(26.0/12),
+		PERIOD_MONTHLY: Decimal(1.0),
+		PERIOD_QUARTERLY: Decimal(1.0/3),
+		PERIOD_SEMIYEARLY: Decimal(1.0/6),
+		PERIOD_YEARLY: Decimal(1.0/12)
 	}
 
 	started_at = models.DateField(default=date.today, blank=True, null=True)
@@ -116,7 +118,7 @@ class RecurringTransaction(Transaction):
 		else:
 			start_date = self.started_at
 			while start_date < datetime.now().date():
-				start_date = start_date.replace(month=next_month(start_date, self.period)).date()
+				start_date = start_date.replace(month=next_month(start_date, self.period))#.date()
 
 		return start_date
 
@@ -127,6 +129,9 @@ class RecurringTransaction(Transaction):
 		else:
 			new_month = next_month(start_date, self.period)
 			new_year = next_year(start_date, self.period)
+			(first_day, days) = calendar.monthrange(new_year, new_month)
+			if start_date.day > days:
+				start_date = start_date.replace(day=days)
 			start_date = start_date.replace(month=new_month, year=new_year)
 
 		return start_date

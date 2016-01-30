@@ -29,7 +29,7 @@
 {% for r in income_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
@@ -59,7 +59,7 @@
 {% for r in debt_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
@@ -89,7 +89,7 @@
 {% for r in utility_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
@@ -120,7 +120,7 @@
 {% for r in creditcard_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %}</td>
+		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
