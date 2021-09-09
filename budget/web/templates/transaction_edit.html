@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<h2>{{new_or_edit}} {{transaction_type_or_name}}</h2>
+
+<form method="POST">
+	{% csrf_token %}
+	{{ transaction_form.as_p }}
+	<input type="submit" value="Save">
+</form>
+
+{% endblock %}
+
+{% block script %}
+
+<script type="text/javascript">
+	
+	function setPeriodVisibility(){
+
+		if($("#id_period").val() == "monthly"){
+			$("#id_cycle_due_date").parent().show();
+			$("#id_started_at").parent().hide();
+		}else{
+			$("#id_cycle_due_date").parent().hide();
+			$("#id_started_at").parent().show();
+		}
+	}
+	
+	$(document).ready(function(){
+		setPeriodVisibility();
+	});
+
+	$(document).on("change", "#id_period", function(e){
+		setPeriodVisibility();
+	});
+
+</script>
+
+{% endblock %}

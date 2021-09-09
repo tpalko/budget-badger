@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<form method="POST">
+	{% csrf_token %}
+	{{ expense_formset.management_form }}
+	{% for f in expense_formset %}
+		<div>{{ f }}</div>
+	{% endfor %}
+	<input type="submit" name="save" value="Save">
+	<input type="submit" name="save_and_add" value="Save and Add Another">
+</form>
+
+{% endblock %}

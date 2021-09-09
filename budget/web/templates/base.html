@@ -1,0 +1,41 @@
+{% load static %}
+
+<!doctype html>
+
+<html>
+<head>
+
+<link rel="stylesheet" type="text/css" href="{% static "js/jquery-ui-1.11.4.custom/jquery-ui.css" %}" />
+<link rel="stylesheet" type="text/css" href="{% static "style/budget.css" %}" />
+  
+</head>
+<body>
+
+<h1>Budget Badger</h1>
+
+<ul>
+	<li><a href="{% url "projection" %}">Projection</a></li>
+	<li><a href="{% url "transactions" %}">Income/Expense Management</a></li>
+</ul>	
+
+	{% if messages %}
+	<ul class="messages">
+	    {% for message in messages %}
+	    <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+	    {% endfor %}
+	</ul>
+	{% endif %}
+
+	{% block content %}{% endblock %}
+
+
+<script type="text/javascript" src="{% static "js/jquery-1.11.3.js" %}"></script>
+<script type="text/javascript" src="{% static "js/jquery-ui-1.11.4.custom/jquery-ui.js" %}"></script>
+
+<script type="text/javascript" src="{% static "js/budget.js" %}"></script>
+
+{% block script %}{% endblock %}
+
+</body>
+
+</html>

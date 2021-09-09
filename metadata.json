@@ -1,0 +1,13 @@
+{
+  "name": "palkosoftware/centos7_x86_64_django_stack",
+  "description": "CentOS 7.1 Guest Additions 4.3.30 x86_64 with Apache, Nginx, MariaDB, PostgreSQL, and Django",
+  "versions": [{
+    "version": "0.1.0",
+    "providers": [{
+      "name": "virtualbox",
+      "url": "http://palkosoftware.ddns.net/boxes/CentOS-7.1.1503.el7.centos.2.8_GuestAdditions_4.3.30_DjangoStack.box",
+      "checksum_type": "sha1",
+      "checksum": "1b72c9647cb1e5effa66492f2c0ebf5f106e1cc5"
+    }]
+  }]
+}
