@@ -1,30 +1,31 @@
 """budget URL Configuration
 
 The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/1.8/topics/http/urls/
+    https://docs.djangoproject.com/en/3.2/topics/http/urls/
 Examples:
 Function views
     1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  url(r'^$', views.home, name='home')
+    2. Add a URL to urlpatterns:  path('', views.home, name='home')
 Class-based views
     1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  url(r'^$', Home.as_view(), name='home')
+    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
 Including another URLconf
-    1. Add an import:  from blog import urls as blog_urls
-    2. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
+    1. Import the include() function: from django.urls import include, path
+    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.conf.urls import include, url
 from django.contrib import admin
+from django.urls import path
 from web import views
 
 urlpatterns = [
-    url(r'^$', views.home, name="home"),
-    url(r'^admin/', include(admin.site.urls)),
-    #url(r'^transaction/$', views.transaction_new, name="transaction_new"),
-    url(r'^transaction/new/(?P<transaction_type>[a-z]+)/$', views.transaction_new, name="transaction_new"),
-    url(r'^transaction/(?P<name_slug>[A-Za-z0-9_]+)/$', views.transaction_edit, name="transaction_edit"),
-    url(r'^transactions/$', views.transactions, name="transactions"),
-    url(r'^projection/$', views.projection, name="projection"),
-    url(r'^creditcardexpenses/$', views.creditcardexpenses, name="creditcardexpenses"),
-    url(r'^run_projections/$', views.run_projections, name="run_projections")
+    path(r'', views.home, name="home"),
+    #path(r'^transaction/', views.transaction_new, name="transaction_new"),
+    path(r'transaction/(<transaction_type>[a-z]+)/', views.transaction_new, name="transaction_new"),
+    path(r'transaction/(<name_slug>[A-Za-z0-9-]+)/delete/', views.transaction_delete, name="transaction_delete"),
+    path(r'transaction/(<name_slug>[A-Za-z0-9-]+)/edit/', views.transaction_edit, name="transaction_edit"),
+    path(r'transactions/', views.transactions, name="transactions"),
+    path(r'projection/', views.projection, name="projection"),
+    path(r'creditcardexpenses/', views.creditcardexpenses, name="creditcardexpenses"),
+    path(r'run_projections/', views.run_projections, name="run_projections"),
+    path('admin/', admin.site.urls),
 ]

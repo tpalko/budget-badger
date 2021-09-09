@@ -29,11 +29,14 @@
 {% for r in income_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
-		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
 	</tr>
 {% endfor %}
 </table>
@@ -59,14 +62,17 @@
 {% for r in debt_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
 		<td>{{ r.interest_rate }}</td>
 		<td>{{ r.principal }}</td>
 		<td>{{ r.principal_at }}</td>
-		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
 	</tr>
 {% endfor %}
 </table>
@@ -89,11 +95,14 @@
 {% for r in utility_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
-		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
 	</tr>
 {% endfor %}
 </table>
@@ -120,14 +129,17 @@
 {% for r in creditcard_transactions %}
 	<tr>
 		<td>{{ r.name }}</td>
-		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|real_amount|dec_out }}</td>
+		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
 		<td>{{ r.started_at|date }}</td>
 		<td>{{ r.cycle_due_date }}</td>
 		<td>{{ r.period }}</td>
 		<td>{{ r.interest_rate }}</td>
 		<td>{{ r.cycle_billing_date }}</td>
 		<td>{{ r.creditcardtransaction.creditcardexpense_set.all|map:"name" }}</td>
-		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
 	</tr>
 {% endfor %}
 </table>
@@ -152,7 +164,10 @@
 		<td>{{ r.amount|dec_out }}</td>
 		<td>{{ r.transaction_at|date }}</td>
 		<td>{{ r.creditcardtransaction }}</td>
-		<td><a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a></td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
 	</tr>
 {% endfor %}
 </table>

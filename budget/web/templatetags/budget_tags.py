@@ -19,5 +19,12 @@ def map(items, attribute):
 	return ",".join([str(i.__getattribute__(attribute)) for i in items])
 
 @register.filter()
-def real_amount(transaction):
-	return transaction.real_amount()*RecurringTransaction.period_monthly_occurrence[transaction.period]
+def monthly_amount(transaction):
+	if transaction.recurringtransaction:
+		return transaction.recurringtransaction.monthly_amount()
+	else:
+		raise Exception("This transaction does not recur, and so a monthly amount does not apply.")
+
+@register.filter()
+def real_amount(transaction, payment_at):
+	return transaction.real_amount(payment_at)

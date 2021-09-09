@@ -1,4 +1,4 @@
-from django.shortcuts import render, render_to_response, redirect
+from django.shortcuts import render, redirect
 from django.template import Context, RequestContext
 from django.template.loader import get_template
 from django.forms import ModelForm, BooleanField, DateField, HiddenInput, CharField
@@ -8,7 +8,7 @@ from django.contrib import messages
 from django.core import serializers
 from django.db.models import Sum, Q, Func, F
 import sys
-from models import *
+from .models import *
 from decimal import Decimal
 from datetime import datetime, timedelta
 import logging
@@ -16,290 +16,338 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+
 class TransactionForm(ModelForm):
 
-	class Meta:
-		model = Transaction
-		fields = ['name', 'amount', 'transaction_type', 'is_active']
-	
-	transaction_type = CharField(widget=HiddenInput())
+    class Meta:
+        model = Transaction
+        fields = ['name', 'amount', 'transaction_type', 'is_active']
 
-	def clean(self):
-		''' Pre-save processing: fixing 'amount' sign. '''
+    transaction_type = CharField(widget=HiddenInput())
 
-		super(TransactionForm, self).clean()
+    def clean(self):
+        ''' Pre-save processing: fixing 'amount' sign. '''
 
-		if 'amount' in self.cleaned_data:
-			# - make sure the sign of the amount is correct, based on the transaction type
-			switch_sign = (self.cleaned_data['transaction_type'] == Transaction.TRANSACTION_TYPE_INCOME and self.cleaned_data['amount'] < 0) or (self.cleaned_data['transaction_type'] != Transaction.TRANSACTION_TYPE_INCOME and self.cleaned_data['amount'] > 0)
+        super(TransactionForm, self).clean()
 
-			if switch_sign:
-				self.cleaned_data['amount'] = -self.cleaned_data['amount']
-				self.instance.amount = self.cleaned_data['amount']
+        if 'amount' in self.cleaned_data:
+            # - make sure the sign of the amount is correct, based on the transaction type
+            switch_sign = (self.cleaned_data['transaction_type'] == Transaction.TRANSACTION_TYPE_INCOME and self.cleaned_data['amount'] < 0) or (self.cleaned_data['transaction_type'] != Transaction.TRANSACTION_TYPE_INCOME and self.cleaned_data['amount'] > 0)
+
+        if switch_sign:
+            self.cleaned_data['amount'] = -self.cleaned_data['amount']
+            self.instance.amount = self.cleaned_data['amount']
+
 
 class RecurringTransactionForm(TransactionForm):
 
-	class Meta:
-		model = RecurringTransaction
-		fields = ['name', 'amount', 'period', 'started_at', 'cycle_due_date', 'is_variable', 'transaction_type', 'is_active']
+    class Meta:
+        model = RecurringTransaction
+        fields = ['name', 'amount', 'period', 'started_at', 'cycle_due_date', 'is_variable', 'transaction_type', 'is_active']
 
-	transaction_type = CharField(widget=HiddenInput())
+    transaction_type = CharField(widget=HiddenInput())
 
-	def __init__(self, *args, **kwargs):
-		''' This doesn't do anything at the moment.. don't remember what it used to do.. '''
+    def __init__(self, *args, **kwargs):
+        ''' This doesn't do anything at the moment.. don't remember what it used to do.. '''
 
-		#is_income = False
-		
-		if 'instance' in kwargs:
-			instance = kwargs.get('instance')
-			#is_income = instance.transaction_type == 'income'
+        # is_income = False
 
-		if len(args) > 0:
-			post = args[0]
-			#is_income = post.get('transaction_type') == 'income'
+        if 'instance' in kwargs:
+            instance = kwargs.get('instance')
+            # is_income = instance.transaction_type == 'income'
 
-		initial = kwargs.get('initial', {})
-		#initial['is_income'] = is_income
-		kwargs['initial'] = initial
+        if len(args) > 0:
+            post = args[0]
+            # is_income = post.get('transaction_type') == 'income'
 
-		super(RecurringTransactionForm, self).__init__(*args, **kwargs)
+        initial = kwargs.get('initial', {})
+        #initial['is_income'] = is_income
+        kwargs['initial'] = initial
+
+        super(RecurringTransactionForm, self).__init__(*args, **kwargs)
+
 
 class CreditCardTransactionForm(RecurringTransactionForm):
-	 
-	 class Meta:
-	 	model = CreditCardTransaction
-	 	fields = ['name', 'period', 'started_at', 'cycle_due_date','interest_rate', 'is_variable', 'transaction_type', 'cycle_billing_date']
+
+     class Meta:
+     	model = CreditCardTransaction
+     	fields = ['name', 'period', 'started_at', 'cycle_due_date','interest_rate', 'is_variable', 'transaction_type', 'cycle_billing_date']
+
 
 class DebtTransactionForm(RecurringTransactionForm):
 
-	class Meta:
-		model = DebtTransaction
-		fields = ['name', 'amount','period', 'started_at', 'cycle_due_date','interest_rate', 'is_variable', 'transaction_type', 'principal', 'principal_at']
+    class Meta:
+        model = DebtTransaction
+        fields = ['name', 'amount','period', 'started_at', 'cycle_due_date','interest_rate', 'is_variable', 'transaction_type', 'principal', 'principal_at']
+
 
 class SingleTransactionForm(TransactionForm):
-	
-	class Meta:
-		model = SingleTransaction
-		fields = ['name', 'amount', 'transaction_at', 'creditcardtransaction', 'transaction_type']
+
+    class Meta:
+        model = SingleTransaction
+        fields = ['name', 'amount', 'transaction_at', 'creditcardtransaction', 'transaction_type']
+
 
 class BaseCreditCardExpenseFormSet(BaseModelFormSet):
 
-	class Meta:
-		model = CreditCardExpense
+    class Meta:
+        model = CreditCardExpense
 
-	def clean(self):
-		super(BaseCreditCardExpenseFormSet, self).clean()
-		for form in self.forms:
-			if 'amount' in form.cleaned_data and form.cleaned_data['amount'] > 0:
-				form.cleaned_data['amount'] = -form.cleaned_data['amount']
-				form.instance.amount = form.cleaned_data['amount']
-				logger.info("cleaned: %s and instance: %s" %(form.cleaned_data['amount'], form.instance.amount))
-		
+    def clean(self):
+        super(BaseCreditCardExpenseFormSet, self).clean()
+        for form in self.forms:
+            if 'amount' in form.cleaned_data and form.cleaned_data['amount'] > 0:
+                form.cleaned_data['amount'] = -form.cleaned_data['amount']
+                form.instance.amount = form.cleaned_data['amount']
+                logger.info("cleaned: %s and instance: %s" %(form.cleaned_data['amount'], form.instance.amount))
+
+
 CreditCardExpenseFormSet = modelformset_factory(CreditCardExpense, fields = ('name', 'amount', 'creditcardtransaction'), formset=BaseCreditCardExpenseFormSet)
 
 form_types = {
-	Transaction.TRANSACTION_TYPE_SINGLE: SingleTransactionForm,	
-	Transaction.TRANSACTION_TYPE_INCOME: RecurringTransactionForm,
-	Transaction.TRANSACTION_TYPE_UTILITY: RecurringTransactionForm,
-	Transaction.TRANSACTION_TYPE_CREDITCARD: CreditCardTransactionForm,
-	Transaction.TRANSACTION_TYPE_DEBT: DebtTransactionForm
+    Transaction.TRANSACTION_TYPE_SINGLE: SingleTransactionForm,
+    Transaction.TRANSACTION_TYPE_INCOME: RecurringTransactionForm,
+    Transaction.TRANSACTION_TYPE_UTILITY: RecurringTransactionForm,
+    Transaction.TRANSACTION_TYPE_CREDITCARD: CreditCardTransactionForm,
+    Transaction.TRANSACTION_TYPE_DEBT: DebtTransactionForm
 }
 
 transaction_types = {
-	Transaction.TRANSACTION_TYPE_SINGLE: SingleTransaction,
-	Transaction.TRANSACTION_TYPE_INCOME: RecurringTransaction,
-	Transaction.TRANSACTION_TYPE_UTILITY: RecurringTransaction,
-	Transaction.TRANSACTION_TYPE_CREDITCARD: CreditCardTransaction,
-	Transaction.TRANSACTION_TYPE_DEBT: DebtTransaction
+    Transaction.TRANSACTION_TYPE_SINGLE: SingleTransaction,
+    Transaction.TRANSACTION_TYPE_INCOME: RecurringTransaction,
+    Transaction.TRANSACTION_TYPE_UTILITY: RecurringTransaction,
+    Transaction.TRANSACTION_TYPE_CREDITCARD: CreditCardTransaction,
+    Transaction.TRANSACTION_TYPE_DEBT: DebtTransaction
 }
+
 
 def home(request):
 
-	return redirect('projection')
-	
+    return redirect('projection')
+
+
 def projection(request):
 
-	payments = PlannedPayment.objects.order_by('payment_at', 'transaction__amount')
+    payments = PlannedPayment.objects.order_by('payment_at', 'transaction__amount')
 
-	return render_to_response("projection.html", {'payments': payments}, context_instance=RequestContext(request))
+    return render(request, "projection.html", {'payments': payments})
+
 
 def run_projections(request):
 
-	error = False
-	message = ""
-	result = {}
+    error = False
+    message = ""
+    result = {}
 
-	try:
+    try:
 
-		starting_cash = Decimal(request.POST.get('starting_cash'))
-		minimum_balance = Decimal(request.POST.get('minimum_balance'))
+        starting_cash = Decimal(request.POST.get('starting_cash'))
+        minimum_balance = Decimal(request.POST.get('minimum_balance'))
 
-		PlannedPayment.objects.all().delete()
+        logger.debug("Projecting with %s starting cash and %s min balance" %(starting_cash, minimum_balance))
+        PlannedPayment.objects.all().delete()
 
-		single_transactions = SingleTransaction.objects.all()
+        single_transactions = SingleTransaction.objects.filter(creditcardtransaction__isnull=True)
 
-		for s in single_transactions:
+        logger.debug("Adding %s single transactions" %(len(single_transactions)))
 
-			due_date = s.due_date()
+        for s in single_transactions:
 
-			if due_date > datetime.now().date():
-				plannedpayment = PlannedPayment(transaction=s, payment_at=due_date)
-				plannedpayment.save()
+            due_date = s.due_date()
 
-		recurring_transactions = RecurringTransaction.objects.filter(is_active=True)
-		
-		one_year = (datetime.utcnow() + timedelta(days=365)).date()
+            if due_date > datetime.now().date():
+                plannedpayment = PlannedPayment(transaction=s, payment_at=due_date)
+                plannedpayment.save()
+                logger.debug("Planned payment %s saved" % (plannedpayment.id))
 
-		for e in recurring_transactions:
+        recurring_transactions = RecurringTransaction.objects.filter(is_active=True)
 
-			payment_at = e.next_payment_date()
+        logger.debug("Adding %s recurring transactions" %(len(recurring_transactions)))
 
-			while payment_at < one_year:
-				plannedpayment = PlannedPayment(transaction=e, payment_at=payment_at)
-				plannedpayment.save()
-				payment_at = e.advance_payment_date(payment_at)
+        one_year = (datetime.utcnow() + timedelta(days=365)).date()
 
-		cursor = datetime.utcnow()
+        for e in recurring_transactions:
 
-		highest_interest_debt = DebtTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_DEBT).order_by('-interest_rate').first()
+            logger.debug("Adding transactions for %s" %(e.name))
 
-		while True:
+            payment_at = e.next_payment_date()
 
-			# - First, calculate the running balance for all schedule transactions
-			planned_payments = PlannedPayment.objects.order_by('payment_at', 'transaction__amount')
+            while payment_at < one_year:
+                plannedpayment = PlannedPayment(transaction=e, payment_at=payment_at)
+                plannedpayment.save()
+                next_payment_at = e.advance_payment_date(payment_at)
+                logger.debug("Payment date moving from %s to %s" %(payment_at, next_payment_at))
+                payment_at = next_payment_at
+                logger.debug("Planned payment %s saved" % (plannedpayment.id))
 
-			running_balance = starting_cash
+        # - First, calculate the running balance for all schedule transactions
+        planned_payments = PlannedPayment.objects.order_by('payment_at', 'transaction__amount')
 
-			for planned_payment in planned_payments:			
-				running_balance += planned_payment.transaction.real_amount() + planned_payment.overpayment
-				planned_payment.balance = running_balance
-				planned_payment.save()
+        running_balance = starting_cash
 
-			# - Next, find the transactions that align with the lowest balances
-			# - These are the transactions we want to use as indicators for how much we can overpay on debts
-			lowest_balance_transactions = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lt=one_year, balance__gt=minimum_balance).order_by('balance')
+        for planned_payment in planned_payments:
+            running_balance += planned_payment.transaction.real_amount(planned_payment.payment_at) + planned_payment.overpayment
+            planned_payment.balance = running_balance
+            planned_payment.save()
 
-			if len(lowest_balance_transactions) == 0:
-				break
+        _mark_overpayments()
 
-			logger.info("lowest balance transactions from %s to %s: %s" %(cursor, one_year, len(lowest_balance_transactions)))
+    except:
+        error = True
+        message = str(sys.exc_info()[1])
+        logger.error(sys.exc_info()[0])
+        logger.error(message)
+        traceback.print_tb(sys.exc_info()[2])
 
-			hit = False
+    return JsonResponse({'error': error, 'message': message, 'result': result})
 
-			for lbt in lowest_balance_transactions:
+    # - set up start date and periods
+    # - iterate through periods, figure which transactions fit
+    # - write period transactions into PlannedPayment and calculated balances into Balance
 
-				# - find a payment for our chosen HID that occurs before this LBT to which we can apply our overpayment
-				next_highest_interest_payment = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lte=lbt.payment_at, transaction__id=highest_interest_debt.transaction_ptr_id).order_by('payment_at').first()
 
-				if next_highest_interest_payment:
-					
-					next_highest_interest_payment.overpayment = -(lbt.balance - minimum_balance)
-					next_highest_interest_payment.save()
+def _mark_overpayments():
+    '''Find low balance points, mark debt payments with maximum overpayment'''
 
-					logger.info("Applying %s from %s on %s to %s on %s" % (next_highest_interest_payment.overpayment, lbt.transaction.name, lbt.payment_at, next_highest_interest_payment.transaction.name, next_highest_interest_payment.payment_at))
+    cursor = datetime.utcnow()
 
-					cursor = lbt.payment_at
-					hit = True
-				
-					break
+    logger.debug("Making call for highest-interest debt..")
 
-			if not hit:
-				break
+    highest_interest_debt = DebtTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_DEBT).order_by('-interest_rate').first()
 
-	except:
-		error = True
-		message = str(sys.exc_info()[1])
-		logger.error(sys.exc_info()[0])
-		logger.error(message)
-		traceback.print_tb(sys.exc_info()[2])
+    if not highest_interest_debt:
+        logger.debug("No HID found")
+    else:
+        logger.debug("Found Debt Transaction HID: %s" %(highest_interest_debt.id))
 
-	return JsonResponse({'error': error, 'message': message, 'result': result})
+        while True:
 
-	# - set up start date and periods
-	# - iterate through periods, figure which transactions fit
-	# - write period transactions into PlannedPayment and calculated balances into Balance
+            logger.info("A pass for highest-interest debt payoff..")
+
+            # - Next, find the transactions that align with the lowest balances
+            # - These are the transactions we want to use as indicators for how much we can overpay on debts
+            lowest_balance_transactions = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lt=one_year, balance__gt=minimum_balance).order_by('balance')
+
+            if len(lowest_balance_transactions) == 0:
+                break
+
+            logger.info("lowest balance transactions from %s to %s: %s" % (cursor, one_year, len(lowest_balance_transactions)))
+
+            hit = False
+
+            for lbt in lowest_balance_transactions:
+
+                # - find a payment for our chosen HID that occurs before this LBT to which we can apply our overpayment
+                next_highest_interest_payment = PlannedPayment.objects.filter(payment_at__gt=cursor, payment_at__lte=lbt.payment_at, transaction__id=highest_interest_debt.transaction_ptr_id).order_by('payment_at').first()
+
+                if next_highest_interest_payment:
+
+                    next_highest_interest_payment.overpayment = -(lbt.balance - minimum_balance)
+                    next_highest_interest_payment.save()
+
+                    logger.info("Applying %s from %s on %s to %s on %s" % (next_highest_interest_payment.overpayment, lbt.transaction.name, lbt.payment_at, next_highest_interest_payment.transaction.name, next_highest_interest_payment.payment_at))
+
+                    cursor = lbt.payment_at
+                    hit = True
+
+                    break
+
+            if not hit:
+                logger.info("No hits..")
+                break
 
 def transactions(request):
 
-	single_transactions = SingleTransaction.objects.all().order_by('-transaction_at')
-	income_transactions = RecurringTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_INCOME).order_by('name')
-	debt_transactions = DebtTransaction.objects.all().order_by('-interest_rate')
-	utility_transactions = RecurringTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_UTILITY).order_by('name')
-	creditcard_transactions = CreditCardTransaction.objects.all()
+    single_transactions = SingleTransaction.objects.all().order_by('transaction_at')
+    income_transactions = RecurringTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_INCOME).order_by('name')
+    debt_transactions = DebtTransaction.objects.all().order_by('-interest_rate')
+    utility_transactions = RecurringTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_UTILITY).order_by('name')
+    creditcard_transactions = CreditCardTransaction.objects.all()
 
-	transactions = RecurringTransaction.objects.all()
-	avg_monthly_out = sum([ o.real_amount()*RecurringTransaction.period_monthly_occurrence[o.period] for o in transactions if o.transaction_type in [Transaction.TRANSACTION_TYPE_UTILITY, Transaction.TRANSACTION_TYPE_DEBT, Transaction.TRANSACTION_TYPE_CREDITCARD] ])
-	avg_monthly_in = sum([ o.real_amount()*RecurringTransaction.period_monthly_occurrence[o.period] for o in transactions if o.transaction_type in [Transaction.TRANSACTION_TYPE_INCOME] ])
-	avg_monthly_balance = avg_monthly_in + avg_monthly_out
+    transactions = RecurringTransaction.objects.all()
+    avg_monthly_out = sum([ o.monthly_amount() for o in transactions if o.transaction_type in [Transaction.TRANSACTION_TYPE_UTILITY, Transaction.TRANSACTION_TYPE_DEBT, Transaction.TRANSACTION_TYPE_CREDITCARD] ])
+    avg_monthly_in = sum([ o.monthly_amount() for o in transactions if o.transaction_type in [Transaction.TRANSACTION_TYPE_INCOME] ])
+    avg_monthly_balance = avg_monthly_in + avg_monthly_out
 
-	total_debt = sum([d.principal for d in debt_transactions])
+    total_debt = sum([d.principal for d in debt_transactions])
 
-	return render_to_response("transactions.html", 
-		{
-			'total_debt': total_debt, 
-			'avg_monthly_balance': avg_monthly_balance, 
-			'avg_monthly_out': avg_monthly_out, 
-			'avg_monthly_in': avg_monthly_in, 
-			'single_transactions': single_transactions,
-			'income_transactions': income_transactions, 
-			'debt_transactions': debt_transactions, 
-			'utility_transactions': utility_transactions, 
-			'creditcard_transactions': creditcard_transactions
-		}, context_instance=RequestContext(request))
+    return render(request, "transactions.html",
+                              {
+                                'total_debt': total_debt,
+                                'avg_monthly_balance': avg_monthly_balance,
+                                'avg_monthly_out': avg_monthly_out,
+                                'avg_monthly_in': avg_monthly_in,
+                                'single_transactions': single_transactions,
+                                'income_transactions': income_transactions,
+                                'debt_transactions': debt_transactions,
+                                'utility_transactions': utility_transactions,
+                                'creditcard_transactions': creditcard_transactions
+                                })
+
 
 def transaction_new(request, transaction_type):
-	
-	if request.method == "POST":
 
-		transaction_form = form_types[transaction_type](request.POST)
+    if request.method == "POST":
 
-		if transaction_form.is_valid():
-			t = transaction_form.save()
-			return redirect('transactions')
-	
-	transaction_form = form_types[transaction_type](initial={'transaction_type': transaction_type})
-	
-	return render_to_response("transaction_edit.html", {'transaction_form': transaction_form, 'new_or_edit': 'New', 'transaction_type_or_name': [ c[1] for c in Transaction.type_choices if c[0] == transaction_type ][0]}, context_instance=RequestContext(request))
+        transaction_form = form_types[transaction_type](request.POST)
+
+        if transaction_form.is_valid():
+            transaction_form.save()
+            return redirect('transactions')
+
+    transaction_form = form_types[transaction_type](initial={'transaction_type': transaction_type})
+
+    return render(request, "transaction_edit.html", {'transaction_form': transaction_form, 'new_or_edit': 'New', 'transaction_type_or_name': [ c[1] for c in Transaction.type_choices if c[0] == transaction_type ][0]})
+
 
 def transaction_edit(request, name_slug):
 
-	logger.info("editing %s" % name_slug)
-	name = name_slug.replace('_', ' ')
-	
-	transaction = Transaction.objects.filter(name=name)[0]
+    logger.info("editing %s" % name_slug)
 
-	transaction = transaction_types[transaction.transaction_type].objects.filter(name=name)[0]
-	transaction_form = form_types[transaction.transaction_type](instance=transaction)
+    transaction = Transaction.objects.filter(slug=name_slug)[0]
 
-	if request.method == "POST":
+    transaction = transaction_types[transaction.transaction_type].objects.filter(slug=name_slug)[0]
+    transaction_form = form_types[transaction.transaction_type](instance=transaction)
 
-		logger.info("got post for %s" % name_slug)
-		transaction_form = form_types[transaction.transaction_type](request.POST, instance=transaction)
+    if request.method == "POST":
 
-		if transaction_form.is_valid():
-			transaction_form.save()
-			return redirect('transactions')
-		else:
-			logger.error("not valid!")
+        logger.info("got post for %s" % name_slug)
+        transaction_form = form_types[transaction.transaction_type](request.POST, instance=transaction)
 
-	return render_to_response("transaction_edit.html", {'transaction_form': transaction_form, 'new_or_edit': 'Edit', 'transaction_type_or_name': "%s: %s" % ([ c[1] for c in Transaction.type_choices if c[0] == transaction.transaction_type ][0], transaction.name)}, context_instance=RequestContext(request))
+        if transaction_form.is_valid():
+            transaction_form.save()
+            return redirect('transactions')
+        else:
+            logger.error("not valid!")
+
+    return render(request, "transaction_edit.html", {'transaction_form': transaction_form, 'new_or_edit': 'Edit', 'transaction_type_or_name': "%s: %s" % ([ c[1] for c in Transaction.type_choices if c[0] == transaction.transaction_type ][0], transaction.name)})
+
+
+def transaction_delete(request, name_slug):
+
+    logger.info("deleting %s" % name_slug)
+    name = name_slug.replace('-', ' ')
+
+    transaction = Transaction.objects.filter(name=name)[0]
+
+    transaction.delete()
+
+    return redirect("transactions")
+
 
 def creditcardexpenses(request):
 
-	expense_formset = CreditCardExpenseFormSet()
+    expense_formset = CreditCardExpenseFormSet()
 
-	if request.method == "POST":
-		expense_formset = CreditCardExpenseFormSet(request.POST)
-		if expense_formset.is_valid():
-			logger.info(expense_formset.forms[0].instance.amount)
-			expense_formset.save()
+    if request.method == "POST":
+        expense_formset = CreditCardExpenseFormSet(request.POST)
+        if expense_formset.is_valid():
+            logger.info(expense_formset.forms[0].instance.amount)
+            expense_formset.save()
 
-			if request.POST.get('save_and_add'):
-				return redirect('creditcardexpenses')
-			else:
-				return redirect('transactions')
+        if request.POST.get('save_and_add'):
+            return redirect('creditcardexpenses')
+        else:
+            return redirect('transactions')
 
-	return render_to_response("creditcardexpenses.html", {'expense_formset': expense_formset}, context_instance=RequestContext(request))
-
-
-
+    return render(request, "creditcardexpenses.html", {'expense_formset': expense_formset})
