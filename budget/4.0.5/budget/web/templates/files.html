@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<table>
+    <tr>
+        <th>Account</th>
+        <th>Filename</th>
+        <th>Uploaded</th>
+        <th>Records Ingested</th>
+        <th>Date Range</th>
+        <td></td>
+    </tr>
+    {% for uploadedfile in uploadedfiles %}
+        <tr id="uploadedfile-{{ uploadedfile.id }}">
+            <td>{% if uploadedfile.account %}{{ uploadedfile.account }}{% else %}{{ uploadedfile.creditcard }}{% endif %}</td>                
+            <td>{{ uploadedfile.original_filename }}</td>
+            <td>{{ uploadedfile.created_at }}</td>
+            <td>{{ uploadedfile.records.all|length }} / {{ uploadedfile.record_count }}</td>
+            <td>{{ uploadedfile.first_date }} to {{ uploadedfile.last_date }}</td>
+            <td><a href="{% url "delete_uploadedfile" tenant_id=1 uploadedfile_id=uploadedfile.id %}" data-element-id="uploadedfile-{{ uploadedfile.id }}" class="delete">delete</a></td>
+        </tr>
+    {% endfor %}
+</table>
+<form id="upload_form" method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ uploadedfile_form }}
+    <input type="submit" />
+</form>
+
+{% endblock %}

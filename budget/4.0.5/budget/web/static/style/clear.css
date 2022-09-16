@@ -1,0 +1,97 @@
+* {
+    box-sizing: border-box;
+}
+
+.col-1 {width: 6.25%;}
+.col-2 {width: 12.5%;}
+.col-3 {width: 18.75%;}
+.col-4 {width: 25%;}
+.col-5 {width: 31.25%;}
+.col-6 {width: 37.5%;}
+.col-7 {width: 43.75%;}
+.col-8 {width: 50%;}
+.col-9 {width: 56.25%;}
+.col-10 {width: 62.5%;}
+.col-11 {width: 68.75%;}
+.col-12 {width: 75%;}
+.col-13 {width: 81.25%;}
+.col-14 {width: 87.5%;}
+.col-15 {width: 93.75%;}
+.col-16 {width: 100%;}
+
+.col-offset-1 {margin-left: 6.25%;}
+.col-offset-2 {margin-left: 12.5%;}
+.col-offset-10 {margin-left: 62.5%;}
+.col-offset-12 {margin-left: 75%;}
+
+[class*="col-"] {
+    float: left;
+}
+
+.pull-right {
+    float: right;
+}
+
+.row:after {
+    content: "";
+    clear: both;
+    display: block;
+}
+
+h1, h2, h3, h4, h5, h6, ul {
+	margin: 0;
+	padding: 0;
+}
+
+a {
+	text-decoration: none;
+}
+
+
+li {
+	list-style: none;
+}
+
+ul.bullets li {
+	list-style: outside;
+}
+
+html {
+	position: relative;
+}
+
+table.clicky-table {
+    font-weight: 100;
+    font-size: 0.7em;
+}
+
+table#record_group_table {
+    margin-left: -100px;
+    margin-right: 30px;
+}
+
+table.clicky-table tr th{
+}
+
+table.clicky-table tr.even {
+    background-color: #66cc66;
+    color: black;
+}
+
+table.clicky-table tr.odd {
+    background-color: #99ff99;
+    color: black;
+}
+
+table.clicky-table tr:hover {
+    background-color: #00ff00;
+}
+
+table.clicky-table tr.selected {
+    background-color: #00ff00;
+}
+
+table.clicky-table tr td {
+    padding: .5em;
+    word-wrap: normal;
+}

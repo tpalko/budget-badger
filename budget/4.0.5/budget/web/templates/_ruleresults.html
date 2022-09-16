@@ -1,0 +1,5 @@
+<div>
+    {% for record in records %} 
+        <div>{{ transaction_date }} - {{ description }}: {{ amount }} (tx:{% if transaction %}{{ transaction }}{% else %}no transaction{% endif %})</div>
+    {% endfor %}
+</div>

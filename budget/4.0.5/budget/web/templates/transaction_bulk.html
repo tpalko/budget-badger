@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<div>
+    <h2>Transaction Bulk Intake</h2>
+    {{ formset.non_form_errors }}
+
+    <div class="error">
+        {% if formset_errors|length > 0 %}{{ formset_errors|length }} errors{% endif %}
+    </div>
+    
+    <form id="transaction_bulk_form" method="post" action="{% url "transaction_bulk" tenant_id=1 %}">
+        <input type="submit" />
+        {% csrf_token %}
+        {{ formset.management_form }}
+        {% for form in formset %}
+            <div 
+                id="recordgroup-{{ form.record_group_id.value }}" 
+                class="transaction_intake_form" 
+                data-record-group-id="{{ form.record_group_id.value }}">
+                
+                <h4>
+                    {{ form.id.value }} -- {{ form.name.value }}: {{ form.stats.record_count }} Records 
+                    <a 
+                        href="#" 
+                        class="delete noconfirm" 
+                        id="delete-record-group-{{ form.record_group_id.value }}" 
+                        data-delete-element-id="recordgroup-{{ form.record_group_id.value }}">
+                        X
+                    </a>
+                </h4>
+                {{ form.as_p }}
+                {% for key in form.stats.keys %}
+                    <div>{{ key }}:{{ form.stats|lookup:key }}</div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+    </form>
+</div>  
+
+{% endblock %}
+
+{% block script %}
+
+<script type="text/javascript">
+	    
+    var form = document.querySelector("#transaction_bulk_form");
+
+    document.querySelectorAll("a[id^=delete-record-group-]").forEach((el, i) => {
+        el.addEventListener('click', function(e){
+            e.preventDefault();
+            document.querySelector("#" + e.target.dataset['deleteElementId']).remove();
+            form['form-TOTAL_FORMS'].value--;
+            form['form-INITIAL_FORMS'].value--;
+        })        
+    })
+    
+
+    // TODO: set form action based on type selected 
+    //  url "transaction_new" tenant_id=1 transaction_type=group.form.transaction_type.value */ --> %} -->
+
+	// function setPeriodVisibility(){
+
+	// 	if($("#id_period").val() == "monthly"){
+	// 		$("#id_cycle_due_date").parent().show();
+	// 		$("#id_started_at").parent().hide();
+	// 	}else{
+	// 		$("#id_cycle_due_date").parent().hide();
+	// 		$("#id_started_at").parent().show();
+	// 	}
+	// }
+	
+	// document.addEventListener('DOMContentLoaded', setPeriodVisibility);
+	// document.querySelector("#id_period") && document.querySelector("#id_period").addEventListener("change", setPeriodVisibility);
+
+</script>
+
+{% endblock %}

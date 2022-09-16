@@ -1,0 +1,12 @@
+{% load budget_tags %}
+
+<div>
+    <div>
+        Records: {{ unaccounted_record_count }}/{{ total_record_count }}
+    </div>
+    <ul>
+        <li>Total: ${{ amount_sum|format_currency }}</li>
+        <li>{{ earliest_date }} to {{ latest_date }} ({{ days }} days, {{ months }} months)</li>
+        <li>{{ records_per_month }} records per month</li>
+    </ul>
+</div>

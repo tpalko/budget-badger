@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Record Management</h2>
+
+<ul id="tabs-records" class="tabs">
+    {% for account in records_by_account %} 
+        <li id="account-{{ account.obj.id }}">{{ account.obj.name }} ({{ account.records|length }})</li>
+    {% endfor %}
+    {% for creditcard in records_by_creditcard %} 
+        <li id="creditcard-{{ creditcard.obj.id }}">{{ creditcard.obj.name }} ({{ creditcard.records|length }})</li>
+    {% endfor %}    
+</ul>
+
+{% for account in records_by_account %} 
+    {% with record_parent_base=account type="account" %}
+        {% include "_records_table.html" %}
+    {% endwith %}
+{% endfor %}  
+{% for creditcard in records_by_creditcard %} 
+    {% with record_parent_base=creditcard type="creditcard" %}
+        {% include "_records_table.html" %}
+    {% endwith %}
+{% endfor %}    
+
+<form id="transaction_form" method="POST" action="{% if transaction_type %}{% url "transaction_new" tenant_id=1 %}{% endif %}">
+    {% csrf_token %}
+    <input type="hidden" name="record_ids" value="{{ record_ids }}" />
+</form>
+
+{% endblock %}
+
+{% block script %}
+
+<script language="javascript">
+
+    var baseRuleSetUrl = '{% url "transactionruleset_create" tenant_id=1 rule="nothing:contains:nothing" %}';
+    document.addEventListener('DOMContentLoaded', function() {
+
+        document.querySelectorAll(".ruleclick").forEach((el, i) => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                var col = el.dataset.rule.split('=')[0];
+                var val = el.dataset.rule.split('=')[1];
+                document.location = baseRuleSetUrl.replace(/nothing:contains:nothing/, col + ":contains:" + val)
+            })
+        })
+        document.querySelectorAll(".record_sort").forEach((el, i) => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                document.location = document.location + "?sort=" + el.dataset.recordsort;
+            });
+        });
+
+        // document.querySelector("#create_transaction").addEventListener('click', (e) => {
+        //     e.preventDefault();
+        //     var transaction_form = document.querySelector("#transaction_form");
+        //     transaction_form.submit();
+        // })
+    });
+</script>
+
+{% endblock %}

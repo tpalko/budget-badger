@@ -1,0 +1,22 @@
+{% load budget_tags %}
+
+<div id="tabs-records-{{ type }}-{{ record_parent_base.obj.id }}">
+    <table class="clicky-table">
+        <tr>
+            {% for col in record_columns %}
+                <th class="record_sort" data-recordsort="{{ col }}">{{ col }}</th>
+            {% endfor %}
+            <th>rules matched</th>
+        </tr>
+        {% for record in record_parent_base.records %} 
+            <tr id="{{ type }}-record-{{ record.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+                {% for col in record_columns %}
+                    <td data-clickyrow="{{ type }}-record-{{ record.id }}">{{ record|lookup:col }}</td>
+                {% endfor %}
+                <td>
+                    {{ record_rules|lookup:record.id }}
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+</div>
