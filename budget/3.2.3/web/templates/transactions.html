@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Income/Expense Management</h2>
+
+<div>
+	Avg. In: {{ avg_monthly_in|dec_out }}<br />
+	Avg. Out: {{ avg_monthly_out|dec_out }}<br />
+	Avg. Balance: {{ avg_monthly_balance|dec_out }}
+</div>
+
+<h3>Income - {{avg_monthly_in|dec_out}}</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="income" %}">new income</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th></th>
+	</tr>
+{% for r in income_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Debt - {{total_debt|dec_out}}</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="debt" %}">new debt</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th>Interest Rate</th>
+		<th>Principal</th>
+		<th>Principal At</th>
+		<th></th>
+	</tr>
+{% for r in debt_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>{{ r.interest_rate }}</td>
+		<td>{{ r.principal }}</td>
+		<td>{{ r.principal_at }}</td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Utility</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="utility" %}">new utility</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th></th>
+	</tr>
+{% for r in utility_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Credit Cards</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="creditcard" %}">new credit card</a> <br />
+	<a href="{% url 'creditcardexpenses' %}">manage credit card expenses</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Expense Total</th>
+		<th>Started At</th>
+		<th>Due Date</th>
+		<th>Period</th>
+		<th>Interest Rate</th>
+		<th>Billing Date</th>
+		<th>Expenses</th>
+		<th></th>
+	</tr>
+{% for r in creditcard_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>{{ r.interest_rate }}</td>
+		<td>{{ r.cycle_billing_date }}</td>
+		<td>{{ r.creditcardtransaction.creditcardexpense_set.all|map:"name" }}</td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Single Transactions</h3>
+
+<div>
+	<a href="{% url 'transaction_new' transaction_type="single" %}">new single transaction</a> <br />
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Amount</th>
+		<th>Date</th>
+		<th>Credit Card</th>
+		<th></th>
+	</tr>
+{% for r in single_transactions %}
+	<tr>
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }}</td>
+		<td>{{ r.transaction_at|date }}</td>
+		<td>{{ r.creditcardtransaction }}</td>
+		<td>
+			<a href="{% url 'transaction_edit' name_slug=r.slug %}">edit</a>
+			<a href="{% url 'transaction_delete' name_slug=r.slug %}" class="delete">delete</a>
+		</td>
+	</tr>
+{% endfor %}
+</table>
+
+{% endblock %}

@@ -4,3 +4,5 @@
 ._.DS_Store
 _local
 settings_dev.py
+media
+data

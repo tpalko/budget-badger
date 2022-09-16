@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h1>Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h1>
+
+<div id="errors"></div>
+
+<form id="ruleform" method="POST">
+    {% csrf_token %}
+    {{ transactionrule_formset.management_form }}
+    <div>
+        {{ transactionruleset_form }}
+        <!-- <select name="join_operator">
+            {% for join_operator in join_operators %}
+                <option value="{{ join_operator.0 }}" {% if transactionruleset and transactionruleset.join_operator == join_operator.0 %}selected{% endif %}>{{ join_operator.0 }}</option>
+            {% endfor %}
+        </select> -->
+    </div>
+    <div>
+        <h1>Formset</h1>        
+        <div id="forms">
+            {% for form in transactionrule_formset %}
+                <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
+                    <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>                
+                </div>            
+            {% endfor %}
+        </div>
+        <a id="another_form" href="#">+</a>            
+    </div>
+
+    <!-- <div>
+        <h1>Form</h1>
+        {{ form }}
+    </div> -->
+    <!-- <select name="recordfield">
+        {% for recordfield in recordfields %}
+        <option value="{{ recordfield }}" {% if recordfield == "description" %}selected{% endif %}>{{ recordfield }}</option>
+        {% endfor %}
+    </select>
+    <select name="operation">
+        <option value="&lt;">&lt;</option>
+        <option value="=">=</option>
+        <option value="contains" selected>contains</option>
+        <option value="&gt;">&gt;</option>
+    </select>
+    <input type="text" name="rule" value="" tabindex=1 />
+     -->
+
+    <input type="hidden" name="record_ids" value="" />
+    <input type="hidden" name="submit_type" value="" />
+
+    <input type="submit" name="save" value="save" />
+    <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
+</form>
+
+<div id="results_meta"></div>
+<div id="results"></div>
+
+
+{% endblock %}
+
+{% block script %}
+<script language="javascript">
+
+    var form;
+
+    function formSubmit(e) {
+
+        console.log(e);
+        
+        form.submit_type.value = e.type;
+
+        if (e.type == "submit") {
+            return true;
+        }
+
+        e.preventDefault();
+
+        var options = {
+            method: form.method,
+            body: new FormData(form)
+        }
+
+        fetch(form.action, options)
+            .then((response) => response.json())
+            .then(handleMatchResponse)
+            .catch((error) => {
+                console.error(error);
+            });
+
+        return false;
+    }
+
+    function handleMatchResponse(data) {
+        console.log(data);
+        document.querySelector("#errors").innerText = "";
+        document.querySelector("#results").replaceChildren();
+        document.querySelector("#results_meta").innerText = "";
+        if (!data.success){
+            document.querySelector("#errors").innerText = data.message;
+        } else {
+            form.record_ids.value = data.data.record_ids;
+            
+            document.querySelector("#results_meta").innerText = "Records: " + data.data.unaccounted_record_count + "/" + data.data.total_record_count;
+            data.data.records.forEach((record) => {
+                var newRecord = document.createElement("div");
+                newRecord.innerText = record.transaction_date + "-" + record.description + ": " + record.amount + " (tx:" + (record.transaction ? record.transaction : "no transaction") + ")";
+                document.querySelector("#results").append(newRecord);
+            })                    
+        }                
+    }
+    
+    function renumberFormDivs() {
+
+        var formDivs = document.querySelectorAll(".formdiv");
+        document.querySelector("#ruleform")['form-TOTAL_FORMS'].value = formDivs.length;
+
+        formDivs.forEach((el, formDivIndex) => {
+
+            var beforeCounter = el.dataset.counter;
+
+            el.dataset.counter = formDivIndex;
+
+            el.querySelectorAll("label").forEach((el, i) => {
+                el.setAttribute('for', el.getAttribute('for').replace('form-' + beforeCounter, 'form-' + formDivIndex));
+            })
+            el.querySelectorAll("input").forEach((el, i) => {
+                el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+                el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+            })
+            el.querySelector("span.formdivcounter").innerText = formDivIndex + 1;
+        });
+    }
+
+    function minusForm(e) {
+        e.preventDefault();
+        var index = e.target.dataset.formdiv;
+        form.querySelector("#formdiv-" + index).remove();
+        renumberFormDivs();
+        formSubmit(e);
+    }
+
+    document.addEventListener('DOMContentLoaded', (e) => {
+
+        form = document.querySelector("#ruleform");
+
+        document.querySelector("#another_form").addEventListener('click', (e) => {
+            
+            e.preventDefault();
+            
+            var cloned = document.querySelector(".formdiv[data-counter='0']").cloneNode(true);
+
+            cloned.querySelectorAll("input").forEach((el, i) => {
+                console.log(el.name);
+                if (!el.name.match(/form-[0-9]+-transactionruleset/)) {
+                    el.value = "";
+                }                
+                el.addEventListener("keyup", formSubmit);
+            })
+            var minusLink = document.createElement("a");
+            minusLink.innerText = "-";
+            minusLink.href = "#";
+            minusLink.addEventListener('click', (minusClickEvent) => {
+                minusClickEvent.preventDefault();
+                cloned.remove();
+                renumberFormDivs();
+
+                // -- breaking the pattern, one place that triggers re-evaluation outside the other assigned event listeners
+                formSubmit(minusClickEvent);
+            })
+            cloned.appendChild(minusLink);
+
+            document.querySelector("#forms").append(cloned);
+            renumberFormDivs();
+        })
+
+        form.addEventListener('submit', formSubmit);
+
+        form.querySelectorAll("select").forEach((el, i) => {
+            el.addEventListener('change', formSubmit);
+        })
+
+        form.querySelectorAll("input").forEach((el, i) => {
+            el.addEventListener('keyup', formSubmit);
+        })
+
+        form.querySelectorAll(".minusform").forEach((el, i) => {
+            el.addEventListener('click', minusForm);
+        })
+
+        // document.querySelector("input[name='rule']").addEventListener('keyup', updateResults);
+        // document.querySelector("select[name='operation']").addEventListener('change', updateResults);
+        // document.querySelector("select[name='recordfield']").addEventListener('change', updateResults);
+
+        {% if transactionruleset_form.id.value %}
+        formSubmit(e);
+        {% endif %}
+    });
+
+</script>
+
+{% endblock %}

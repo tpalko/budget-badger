@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<style type="text/css">
+.payment-overpayment{
+	color: red;
+}
+</style>
+
+<h1>Projection</h1>
+
+<div>
+	<form id="run_projections">
+		{% csrf_token %}		
+		<input type="submit" value="Run Projections" />
+	</form>
+</div>
+
+<div class="row">
+	<div class="col-12">
+		<table width="100%">
+			<tr>
+				<th class="col-2">Payment At</th>
+				<th class="col-4">Transaction</th>
+				<th class="col-2">Amount</th>
+				<th class="col-2">Overpayment</th>
+				<th class="col-2">Balance</th>
+			</tr>
+		{% for payment in payments %}
+			<tr class="payment {% if payment.overpayment != 0 %}payment-overpayment{% endif %}">
+				<td class="col-2">{{payment.payment_at}}</td>
+				<td class="col-4">{{payment.transaction.name}} {% if payment.transaction.transaction_type == 'single' %}{{payment.transaction.creditcardtransaction}}{% endif %}</td>
+				<td class="col-2">{{payment.transaction|real_amount:payment.payment_at}}</td>
+				<td class="col-2">{{payment.overpayment}}</td>
+				<td class="col-2">{{payment.balance}}</td>
+			</tr>
+		{% endfor %}
+		</table>
+	</div>
+</div>
+
+
+{% endblock %}
+
+{% block script %}
+
+	<script type="text/javascript">
+
+		document.querySelector("#run_projections").addEventListener("submit", function(e) {
+
+			e.preventDefault();
+
+			projections_run = fetch("{% url "run_projections" tenant_id=1 %}")
+				.then((response) => {
+					document.location = document.location;
+				})
+				.catch((error) => {
+					addErrorMessage(error);
+				})
+
+			// $.ajax({
+			// 	url: "{% url "run_projections" tenant_id=1 %}",
+			// 	type: 'POST',
+			// 	data: $(this).serialize(),
+			// 	dataType: "json",
+			// 	success: function(data, textStatus, jqXHR){
+			// 		if(data.error){
+			// 			alert(data.message);
+			// 		}else{
+			// 			document.location = document.location;
+			// 		}
+			// 	},
+			// 	error: function(jqXHR, textStatus, errorThrown){
+			// 		alert(errorThrown);
+			// 	}
+			// });
+
+			return false;
+		});
+
+	</script>
+
+{% endblock %}

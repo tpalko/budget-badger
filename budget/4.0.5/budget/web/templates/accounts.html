@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Record Type Management</h2>
+
+<a href="{% url "model_edit" tenant_id=1 model_name="recordtype" %}">new record type</a>
+
+<div class="row">
+    <div class="col-16">
+        <div class="row">
+            <div class="col-1">ID</div>
+            <div class="col-2">Name</div>
+            <div class="col-8">CSV Columns</div>
+            <div class="col-2">CSV Date Format</div>
+            <div class="col-1"></div>
+        </div>
+    {% for recordtype in recordtypes %}
+
+        <div class="row">
+            <div class="col-1">{{ recordtype.id }}</div>
+            <div class="col-2">{{ recordtype.name }}</div>
+            <div class="col-8">{{ recordtype.csv_columns|truncatechars:100 }}</div>
+            <div class="col-2">{{ recordtype.csv_date_format }}</div>
+            <div class="col-1">
+                <a href="{% url "model_edit" model_name="recordtype" tenant_id=1 model_id=recordtype.id %}">edit</a>
+                <a href="{% url "model_edit" model_name="recordtype" tenant_id=1 model_id=recordtype.id %}" class="delete">delete</a>
+            </div>
+        </div>
+
+    {% endfor %}
+    </div>
+</div>
+
+<h2>Account Management</h2>
+
+<a href="{% url "account_edit" tenant_id=1 %}">new account</a>
+
+<div class="row">
+    <div class="col-16">
+        <div class="row">
+            <div class="col-2">Name</div>
+            <div class="col-1">Account #</div>
+            <div class="col-2">Record Type</div>
+            <div class="col-1">Balance</div>
+            <div class="col-2">Balance at</div>            
+            <div class="col-2">Minimum balance</div>
+            <div class="col-2">Records</div>
+            <div></div>
+            <div></div>
+        </div>
+    
+
+    {% for account in accounts %}
+        <div class="row">
+            <div class="col-2">{{ account.name }}</div>
+            <div class="col-1">{{ account.account_number }}</div>
+            <div class="col-2">{{ account.recordtype }}</div>
+            <div class="col-1">{{ account.balance }}</div>
+            <div class="col-2">{{ account.balance_at }}</div>            
+            <div class="col-2">{{ account.minimum_balance }}</div>
+            <div class="col-1">{{ account.accounted_records.all|length }} / {{ account.records.all|length }}</div>
+            <div class="col-1"><a href="{% url "account_edit" tenant_id=1 account_id=account.id %}">edit</a></div>
+            <div class="col-1"><a href="{% url "account_edit" tenant_id=1 account_id=account.id %}" class="delete">delete</a></div>
+        </div>        
+    {% endfor %}
+    </div>
+</div>
+
+<h2>Credit Card Management</h2>
+
+<a href="{% url "model_edit" tenant_id=1 model_name="creditcard" %}">new credit card</a>
+
+<div class="row">
+    <div class="col-16">
+        <div class="row">
+            <div class="col-1">ID</div>
+            <div class="col-3">Name</div>
+            <div class="col-2">Record Type</div>
+            <div class="col-2">Account Number</div>
+            <div class="col-1">Interest Rate</div>
+            <div class="col-2">Records</div>
+            <div class="col-1"></div>
+        </div>
+    {% for creditcard in creditcards %}
+
+        <div class="row">
+            <div class="col-1">{{ creditcard.id }}</div>
+            <div class="col-3">{{ creditcard.name }}</div>
+            <div class="col-2">{{ creditcard.recordtype }}</div>
+            <div class="col-2">{{ creditcard.account_number }}</div>
+            <div class="col-1">{{ creditcard.interest_rate }}</div>
+            <div class="col-1">{{ creditcard.accounted_records.all|length }} / {{ creditcard.records.all|length }}</div>
+            <div class="col-1">
+                <a href="{% url "model_edit" model_name="creditcard" tenant_id=1 model_id=creditcard.id %}">edit</a>
+                <a href="{% url "model_edit" model_name="creditcard" tenant_id=1 model_id=creditcard.id %}" class="delete">delete</a>
+            </div>
+        </div>
+
+    {% endfor %}
+    </div>
+</div>
+
+
+
+
+{% endblock %}
+

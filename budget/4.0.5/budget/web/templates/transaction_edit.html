@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>{{new_or_edit}} {{transaction_type_or_name}} {% if form.id.value %}ID: {{ form.id.value }}{% endif %}</h2>
+<form method="POST" action="{% if form.id.value %}{% url "transaction_edit" tenant_id=1 transaction_id=form.id.value %}{% else %}{% url "transaction_new" tenant_id=1 %}{% endif %}">
+	{% csrf_token %}
+	{{ form.as_p }}
+	{% for key in form.stats.keys %}
+		<div>{{ key }}:{{ form.stats|lookup:key }}</div>
+	{% endfor %}
+	<input type="submit" value="Save">
+</form>
+
+{% if records %}
+	{{ records|length }} Records
+	{% for record in records %}
+	<div>
+		{{ record }}
+	</div>
+	{% endfor %}
+{% endif %}
+
+{% endblock %}
+
+{% block script %}
+
+<script type="text/javascript">
+	
+	function setPeriodVisibility(){
+
+
+		// if($("#id_period").val() == "monthly"){
+		// 	$("#id_cycle_due_date").parent().show();
+		// 	$("#id_started_at").parent().hide();
+		// }else{
+		// 	$("#id_cycle_due_date").parent().hide();
+		// 	$("#id_started_at").parent().show();
+		// }
+	}
+	
+	document.addEventListener('DOMContentLoaded', setPeriodVisibility);
+	document.querySelector("#id_period") && document.querySelector("#id_period").addEventListener("change", setPeriodVisibility);
+
+</script>
+
+{% endblock %}

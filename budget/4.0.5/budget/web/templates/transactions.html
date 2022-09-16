@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Transaction Management</h2>
+
+<div>
+	Month Total In: {{ total_monthly_in|dec_out }}<br />
+	Month Total Out: {{ total_monthly_out|dec_out }}<br />
+	Month Balance: {{ monthly_balance|dec_out }}
+</div>
+
+<h3>Income - {{total_monthly_in|dec_out}}</h3>
+
+<div>
+	<a href="{% url 'transaction_new' tenant_id=1 %}" data-transactiontype="income" class="transaction_new">new income</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Account</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th></th>
+	</tr>
+{% for r in income_transactions %}
+	<tr id="transaction-{{ r.id }}">
+		<td>{{ r.name }}</td>
+		<td>{{ r.account }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		{% include "_transaction_controls.html" %}
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Debt - {{total_debt|dec_out}}</h3>
+
+<div>
+	<a href="{% url 'transaction_new' tenant_id=1 %}" data-transactiontype="debt" class="transaction_new">new debt</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Account</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th>Interest Rate</th>
+		<th>Principal</th>
+		<th>Principal At</th>
+		<th></th>
+	</tr>
+{% for r in debt_transactions %}
+	<tr id="transaction-{{ r.id }}">
+		<td>{{ r.name }}</td>
+		<td>{{ r.account }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>{{ r.interest_rate }}</td>
+		<td>{{ r.principal }}</td>
+		<td>{{ r.principal_at }}</td>
+		{% include "_transaction_controls.html" %}
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Utility</h3>
+
+<div>
+	<a href="{% url 'transaction_new' tenant_id=1 %}" data-transactiontype="utility" class="transaction_new">new utility</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Account</th>
+		<th>Amount</th>
+		<th>Started At</th>
+		<th>Cycle Date</th>
+		<th>Period</th>
+		<th></th>
+	</tr>
+{% for r in utility_transactions %}
+	<tr id="transaction-{{ r.id }}">
+		<td>{{ r.name }}</td>
+		<td>{{ r.account }}</td>
+		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		{% include "_transaction_controls.html" %}
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Credit Cards</h3>
+
+<div>
+	<a href="{% url 'transaction_new' tenant_id=1 %}" data-transactiontype="creditcard" class="transaction_new">new credit card</a> <br />
+	<a href="{% url 'creditcardexpenses' tenant_id=1 %}">manage credit card expenses</a>
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>
+		<th>Account</th>
+		<th>Expense Total</th>
+		<th>Started At</th>
+		<th>Due Date</th>
+		<th>Period</th>
+		<th>Interest Rate</th>
+		<th>Billing Date</th>
+		<th>Expenses</th>
+		<th></th>-3375.00
+	</tr>
+{% for r in creditcard_transactions %}
+	<tr id="transaction-{{ r.id }}">
+		<td>{{ r.name }}</td>
+		<td>{{ r.account }}</td>
+		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
+		<td>{{ r.started_at|date }}</td>
+		<td>{{ r.cycle_due_date }}</td>
+		<td>{{ r.period }}</td>
+		<td>{{ r.interest_rate }}</td>
+		<td>{{ r.cycle_billing_date }}</td>
+		<td>{{ r.creditcardtransaction.creditcard_expenses.all|map:"name" }}</td>
+		{% include "_transaction_controls.html" %}
+	</tr>
+{% endfor %}
+</table>
+
+<h3>Single Transactions</h3>
+
+<div>
+	<a href="{% url 'transaction_new' tenant_id=1 %}" data-transactiontype="single" class="transaction_new">new single transaction</a> <br />
+</div>
+
+<table>
+	<tr>
+		<th>Name</th>		
+		<th>Amount</th>
+		<th>Date</th>
+		<th>Account or Credit Card</th>
+		<th></th>
+	</tr>
+{% for r in single_transactions %}
+	<tr id="transaction-{{ r.id }}">
+		<td>{{ r.name }}</td>
+		<td>{{ r.amount|dec_out }}</td>
+		<td>{{ r.transaction_at|date }}</td>
+		<td>{% if r.creditcardtransaction %}{{ r.creditcardtransaction }}{% else %}{{ r.account }}{% endif %}</td>
+		{% include "_transaction_controls.html" %}
+	</tr>
+{% endfor %}
+</table>
+
+<form id="transaction_new" method="POST">
+	{% csrf_token %}
+	<input type="hidden" name="transaction_type" value="" />
+</form>
+
+{% endblock %}
+
+{% block script %}
+<script language="javascript">
+
+	document.addEventListener('DOMContentLoaded', () => {
+		document.querySelectorAll(".transaction_new").forEach((el, i) => {
+			el.addEventListener('click', (e) => {
+				e.preventDefault();
+				var form = document.querySelector("#transaction_new");
+				form['transaction_type'].value = el.dataset.transactiontype;
+				form.action = el.href;
+				form.submit();
+			});
+		});
+	});
+
+</script>
+{% endblock %}
