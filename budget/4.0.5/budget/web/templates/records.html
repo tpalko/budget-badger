@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Record Management</h2>
+
+{% if account_records|length > 0 %}
+<div>
+    <h2>Stats</h2>
+    <ul>
+        <li>Records shown: {{ account_records|length }} / {{ account_records_count }} total</li>
+        {% if attribute_filter %}
+            <li>Attribute Filter: {{ attribute_filter }} <a id="clear_attribute_filter" href="#">X</a></li>
+        {% endif %}
+        {% if heatmap_region_filter %}
+            <li>Heatmap Region Filter: {{ heatmap_region_filter }} <a id="clear_heatmap_region_filter" href="#">X</a></li>
+        {% endif %}
+        <li>Total: ${{ stats.amount_sum|format_currency }}</li>
+        <li>{{ stats.earliest_date }} to {{ stats.latest_date }} ({{ stats.days }} days, {{ stats.months }} months)</li>
+        <li>{{ stats.records_per_month }} records per month</li>
+    </ul>
+</div>
+
+{% include "_heatmaps.html" %}
+
+{% endif %}
+
+<ul id="tabs-records" class="tabs" data-default="{% if attribute_filter %}account{% else %}recordgroups{% endif %}">
+    <li id="account">Account Records ({{ account_records|length }})</li>
+    <li id="creditcard">Credit Card Records ({{ creditcard_records|length }})</li>
+    <li id="recordgroups">Record Groups</li>        
+</ul>
+
+<div id="tabs-records-account">
+    <a href="{% url "records" tenant_id=1 %}" id="create_transaction">Create Transaction</a>    
+    <table style="padding: 3px; border: 1px solid black;">
+        <tr>
+            {% for column in account_columns|array_split:',' %}
+                <th><a href="#" class="record_sort" data-recordsort="{{ column }}">{{ column }}</a></th>
+            {% endfor %}
+        </tr>
+        {% for record in account_records %}
+        <tr>
+            {% for column in account_columns|array_split:',' %}
+                <td><a class="attribute_filter" data-attribute_filter="{{column}}={{ record|lookup:column }}" href="#">{{ record|lookup:column }}</a></td>
+            {% endfor %}            
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div id="tabs-records-creditcard">
+    <table style="padding: 3px; border: 1px solid black;">
+        <tr>
+            {% for column in creditcard_columns|array_split:',' %}
+                <th><a href="#" class="record_sort" data-recordsort="{{ column }}">{{ column }}</a></th>
+            {% endfor %}
+        </tr>
+        {% for record in creditcard_records %}
+        <tr>
+            {% for column in creditcard_columns|array_split:',' %}
+                <td><a class="attribute_filter" data-attribute_filter="{{column}}={{ record|lookup:column }}" href="#">{{ record|lookup:column }}</a></td>
+            {% endfor %}
+            
+        </tr>
+        {% endfor %}
+    </table>
+</div>
+
+<div id="tabs-records-recordgroups">
+    <div >
+        <h2>Record Groups Identified ({{ recordgroup_data.record_groups|length }})</h2>
+        <a href="{% url "transaction_bulk" tenant_id=1 %}">Bulk Intake</a>
+        <a href="{% url "regroup_records" tenant_id=1 %}">Regroup Records</a>
+        {% if recordgroup_data.record_groups %}
+        <table style="padding: 3px; border: 1px solid black;">
+            <tr>
+                {% for column in recordgroup_data.record_group_columns|array_split:',' %}
+                    <th>{{ column }}</th>
+                {% endfor %}
+            </tr>
+            {% for record_group in recordgroup_data.record_groups %}
+            <tr>
+                {% for column in recordgroup_data.record_group_columns|array_split:',' %}
+                    <td>{{ record_group|lookup:column }}</td>
+                {% endfor %}                
+            </tr>
+            {% endfor %}
+        </table>
+        {% endif %}
+    </div>
+    
+</div>
+
+<form id="transaction_form" method="POST" action="{% if transaction_type %}{% url "transaction_new" tenant_id=1 %}{% endif %}">
+    {% csrf_token %}
+    <input type="hidden" name="record_ids" value="{{ record_ids }}" />
+</form>
+
+<form id="filter_form" method="POST">
+    {% csrf_token %}
+    <input type="hidden" name="attribute_filter" value="{{ attribute_filter }}" />
+    <input type="hidden" name="heatmap_region_filter" value="{{ heatmap_region_filter }}" />
+    <input type="hidden" name="record_sort" value="{{ record_sort }}" />
+</form>
+
+{% endblock %}
+
+{% block script %}
+
+<script language="javascript">
+
+    function applyFilter(name, value) {
+        console.log('applying filter ' + name + ' -> ' + value);
+        var filter_form = document.querySelector("#filter_form");
+        if (value !== undefined) {
+            console.log('filtering:' + value)
+            filter_form[name].value = value; 
+        } else {
+            filter_form[name].value = ""; 
+        }
+        
+        filter_form.submit();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+
+        document.querySelectorAll(".record_sort").forEach((el, i) => {
+            el.addEventListener('click', (e) => {
+                e.preventDefault();
+                applyFilter('record_sort', el.dataset.recordsort);
+            });
+            console.log('click added to ' + el);
+        });
+
+        document.querySelector("#create_transaction").addEventListener('click', (e) => {
+            e.preventDefault();
+            var transaction_form = document.querySelector("#transaction_form");
+            transaction_form.submit();
+        })
+
+        document.querySelector("#clear_attribute_filter") && document.querySelector("#clear_attribute_filter").addEventListener('click', function(e) {
+            e.preventDefault();
+            applyFilter('attribute_filter');
+        });
+
+        document.querySelector("#clear_heatmap_region_filter") && document.querySelector("#clear_heatmap_region_filter").addEventListener('click', function(e) {
+            e.preventDefault();
+            applyFilter('heatmap_region_filter');
+        });
+
+        document.querySelectorAll(".attribute_filter").forEach((el, i) => {
+            el.addEventListener('click', function(e) {
+                e.preventDefault();
+                attribute_filter = e.target.dataset.attribute_filter;                                
+                applyFilter('attribute_filter', attribute_filter);
+            })
+        });
+
+        document.querySelectorAll("[class^='heat-'").forEach((el, i) => {
+            el.addEventListener('click', (e) => {
+                applyFilter('heatmap_region_filter', el.dataset['region']);
+            });
+        });
+    });
+</script>
+
+{% endblock %}
