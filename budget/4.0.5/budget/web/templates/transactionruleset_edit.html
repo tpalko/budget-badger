@@ -1,61 +1,65 @@
 {% load budget_tags %}
 
-<h1>Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h1>
+<div id="transactionruleset_form">
 
-<div id="errors">hey</div>
+    <h3>{% if transactionruleset_form.id.value %}Edit{% else %}New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h3>
 
-{% if transactionruleset_form.id.value %} 
-    <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">
-{% else %}
-    <form id="ruleform" method="POST" action="{% url "transactionruleset_create" tenant_id=1 %}">
-{% endif %}
+    <div id="errors"></div>
 
-    {% csrf_token %}
+    {% if transactionruleset_form.id.value %} 
+        <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">
+    {% else %}
+        <form id="ruleform" method="POST" action="{% url "transactionruleset_create" tenant_id=1 %}">
+    {% endif %}
 
-    <div>
-        {{ transactionruleset_form.errors }}
-        {% for bound_field in transactionruleset_form %} 
-            {% if not bound_field.is_hidden %} 
-                {{ bound_field.label_tag }}
-            {% endif %}
-            {% if bound_field.name == "name" %} 
-                {{ bound_field|tabindex:1 }}
-            {% else %}
-                {{ bound_field|tabindex:2 }}
-            {% endif %}
-        {% endfor %}        
-    </div>
-    <div>
-        <h1>Formset</h1>        
-        {{ transactionrule_formset.management_form }}
-        <div id="forms">
-            {% for error in transactionrule_formset.errors %} 
-                {{ error }}
-            {% endfor %}
-            {{ transactionrule_formset.non_form_errors }}
-            {% for form in transactionrule_formset %}
-                <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
-                    <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>
-                </div>            
-            {% endfor %}
+        {% csrf_token %}
+
+        <div>
+            {{ transactionruleset_form.errors }}
+            {% for bound_field in transactionruleset_form %} 
+                <div>
+                    {% if not bound_field.is_hidden %} 
+                        {{ bound_field.label_tag }}
+                    {% endif %}
+                    {% if bound_field.name == "name" %} 
+                        {{ bound_field|tabindex:1 }}
+                    {% else %}
+                        {{ bound_field|tabindex:2 }}
+                    {% endif %}
+                </div>
+            {% endfor %}        
         </div>
-        <a id="another_form" href="#">+</a>            
-    </div>
+        <div>
+            {{ transactionrule_formset.management_form }}
+            <div id="forms">
+                {% for error in transactionrule_formset.errors %} 
+                    {{ error }}
+                {% endfor %}
+                {{ transactionrule_formset.non_form_errors }}
+                {% for form in transactionrule_formset %}
+                    <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
+                        <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>
+                    </div>            
+                {% endfor %}
+            </div>
+            <a id="another_form" href="#">+</a>            
+        </div>
 
-    <input type="hidden" name="unaccounted_record_ids" value="" />
-    <input type="hidden" name="submit_event_type" value="" />
+        <input type="hidden" name="unaccounted_record_ids" value="" />
+        <input type="hidden" name="submit_event_type" value="" />
 
-    <input type="submit" name="save" value="save" />
-    <a href="#" tenant_id=1 %}">cancel</a>
-</form>
+        <input type="submit" name="save" value="save" />
+        <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
+    </form>
 
-<div class="row">    
-    <div class="col-7">
-        <div id="recordstats"></div>        
-        <div id="ruleresults"></div>
-    </div>
-    <div class="col-9">
-        <div id="heatmaps"></div>        
+    <div class="row">    
+        <div class="col-12">
+            <div id="recordstats"></div>        
+            <div id="ruleresults"></div>
+        </div>
+        <div class="col-4">
+            <div id="heatmaps"></div>        
+        </div>
     </div>
 </div>
 
@@ -91,10 +95,11 @@
         
         fetch(form.action, options)
             .then((response) => {
+                var responsej = response.json();
                 if (e.type == "submit") {
-                    document.location = document.location;
+                    document.location = '{% url "transactionrulesets_list" tenant_id=1 %}';
                 } 
-                return response.json()
+                return responsej;
             })
             .then(handleMatchResponse)
             .catch((error) => {
@@ -135,12 +140,13 @@
             
             document.querySelector("#recordstats").innerHTML = data.data.recordstats;
             document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;
+            document.querySelector("#ruleresults").innerHTML = data.data.ruleresults;
 
-            data.data.records.forEach((record) => {
-                var newRecord = document.createElement("div");
-                newRecord.innerText = record.transaction_date + "-" + record.description + ": " + record.amount + " (tx:" + (record.transaction ? record.transaction : "no transaction") + ")";
-                document.querySelector("#ruleresults").append(newRecord);
-            })                    
+            // data.data.records.forEach((record) => {
+            //     var newRecord = document.createElement("div");
+            //     newRecord.innerText = record.transaction_date + "-" + record.description + ": " + record.amount + " (tx:" + (record.transaction ? record.transaction : "no transaction") + ")";
+            //     document.querySelector("#ruleresults").append(newRecord);
+            // })                    
         }                
     }
     
@@ -168,6 +174,9 @@
                 el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
             })
             el.querySelector("span.formdivcounter").innerText = formDivIndex + 1;
+            el.querySelector(".minusform").dataset.formdiv = formDivIndex;
+
+            el.id = "formdiv-" + (formDivIndex);
         });
     }
 

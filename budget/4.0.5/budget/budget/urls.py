@@ -20,6 +20,7 @@ from web import views
 urlpatterns = [
     path(r'', views.home, name="home"),
     #path(r'^transaction/', views.transaction_new, name="transaction_new"),    
+    re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/(?P<transactionruleset_id>[0-9]+)/', views.transactionrulesets_list, name="transactionrulesets_list"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/', views.transactionrulesets_list, name="transactionrulesets_list"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionruleset/(?P<transactionruleset_id>[0-9]+)/', views.transactionruleset_edit, name="transactionruleset_edit"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionruleset/(?P<rule>.+)/', views.transactionruleset_edit, name="transactionruleset_create"),        

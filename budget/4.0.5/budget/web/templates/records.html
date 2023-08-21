@@ -7,10 +7,10 @@
 
 <ul id="tabs-records" class="tabs">
     {% for account in records_by_account %} 
-        <li id="account-{{ account.obj.id }}">{{ account.obj.name }} ({{ account.records|length }})</li>
+        <li class="account" id="account-{{ account.obj.id }}">{{ account.obj.name }} ({{ account.records|length }})</li>
     {% endfor %}
     {% for creditcard in records_by_creditcard %} 
-        <li id="creditcard-{{ creditcard.obj.id }}">{{ creditcard.obj.name }} ({{ creditcard.records|length }})</li>
+        <li class="creditcard" id="creditcard-{{ creditcard.obj.id }}">{{ creditcard.obj.name }} ({{ creditcard.records|length }})</li>
     {% endfor %}    
 </ul>
 

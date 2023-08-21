@@ -11,34 +11,19 @@
 
 <div class="row">
     <div class="col-9">
-        <div id="transactionruleset_form">
-            {% include "transactionruleset_edit.html" %}
-        </div>
-        {% for transactionruleset in transactionrulesets %}
-        <div>
-            <h3>{{ transactionruleset.name }} - {{ transactionruleset.transactionrules.all|length }} rules</h3>
-            <h4>{{ transactionruleset.records|length }} Records -> {{ transactionruleset.transaction }}</h4>
-            <h4>
-                <div>{{ transactionruleset.join_operator }}</div>
-            </h4>
-            <div>
-                {% for transactionrule in transactionruleset.transactionrules.all %}
-                    <div>
-                        #{{ forloop.counter }}. {{ transactionrule.record_field }} {{ transactionrule.match_operator }} {{ transactionrule.match_value}}            
-                    </div>
-                {% endfor %}
-            </div>
-            
-            <div>
-                <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}">edit</a>
-                <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}" class="delete">delete</a>
-            </div>        
-        </div>
-    {% endfor %}
+        
+        {% include "transactionruleset_edit.html" %}
+        
+        <h3>Showing {{ transactionrulesets_auto|length }} rule sets</h3>
+
+        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_manual %}
+
+        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_auto %}
+
     </div>
     <div class="col-7">
-        <a href="{% url "transaction_bulk" tenant_id=1 %}">Bulk Intake</a>
-        <a href="{% url "regroup_records" tenant_id=1 %}">Regroup Records</a>
+        <a class="button" href="{% url "transaction_bulk" tenant_id=1 %}">Bulk Intake</a>
+        <a class="button" href="{% url "regroup_records" tenant_id=1 %}">Regroup Records</a>
         {% if recordgroup_data.record_groups %}
         <table class="clicky-table" id="record_group_table">
             <tr class="row">

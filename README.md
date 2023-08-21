@@ -85,9 +85,55 @@ Types of transactions:
 
 ## Workflow 
 
-As explained earlier, the projection can come from manually entered data and/or by analyzing historical data. From that "defined" state, building a projection is simply putting all those transactions in order and tracking the balance in each account. Getting everything defined properly is the hard part.
+As explained earlier, the projection can come from manually entered data and/or by analyzing historical data. From the final "everything is declared" state, building a projection is simply putting all those transactions in order and tracking the balance in each account. Getting everything defined properly is the hard part.
 
-Ideally, a program could read through historical data and be able to identify each utility, category, account, and debt. It can't, because there's a good bit of noise. Start by grouping all data by "description". In some cases, you'll find temporally evenly spaced records within a power of ten, and that's enough to satisfy a recurring transaction: name, period, amount, and cycle date. Some transactions, however will all fall under 
+Ideally, a program could read through historical data and be able to identify each utility, category, account, and debt - reliable patterns for all expenses and earnings. It can't, because there's a good bit of noise. It can start by grouping all data by "description". In some cases, this is enough to identify temporally even records with amounts inside a power of ten, roughly satisfying a recurring transaction: name, period, amount, and cycle date. Problems creep up when a single description may identify multiple accounts or spending patterns. Checks, for example, have no description from the bank records. 
+
+Additionally, how should these patterns coalesce within the system? Ideally, of course, all records are easily grouped into patterns which exhibit the necessary features for planning and prediction: schedule and amount. But in reality, scanning historical records will come up with a first attempt which will invariably need to be reviewed and modified by the user. Once approved, a "pattern" can then be included in planning. But these automatic and tweaked patterns will need to be merged in with the ones manually added. And then the patterns identified by rule sets will also need to be included. Should the system automatic pattern identification work directly from rule sets? Should every pattern be required to build from rule sets? 
+
+A pattern can be built from historical records or from nothing - anecdotally. 
+If the system can automatically at least attempt to group records, it must be able to translate its "found" parameters into rules.
+If the user can anecdotally declare a pattern, there must be some basis by which a rule can include future records in that pattern.
+Note that observing a pattern and being able to define deterministic boundaries for that pattern are very different things.
+
+TransactionRule 
+- field
+- operator
+- value 
+
+TransactionRuleSet
+- join_operator
+- transactionrules 
+- records() -> analyze -> ProtoTransaction 
+
+ProtoTransaction 
+- name 
+- period 
+- amount 
+- transaction_type 
+- transactionruleset_id
+
+Transaction + subtype
+- name 
+- period
+- amount 
+- prototransaction_id 
+
+Record 
+- description 
+- date
+- amount 
+
+We can work both ways.. starting from Record, group by description and make a pass on simplistic rules that would create each group.
+This can be tested (even!), and then standard record analysis done to produce a ProtoTransaction.
+The user can also create a TransactionRuleSet -> ProtoTransaction workflow.
+We should be mindful of capturing any one record in multiple groups.. 
+The ProtoTransactions can be morphed/cast into their proper Transaction subtypes.
+Future records will influence Transactions by way of TransactionRuleSet -> records analysis -> ProtoTransaction
+
+So why have ProtoTransaction at all? Why not just generate the full Transaction subtype from the TransactionRuleSet? Well, that could work. One issue might be that since we have a variety of subtypes, we will want a buffer between the thing that does grouping into "some kind of pattern we can use for projection" and the thing that classes those patterns into behaving this way or that way. What we don't want is a monster block of code that must generalize _and_ classify.
+
+RecordGrouper remains, and with the same initial responsibility: grouping records. But with a group, it must now attempt to define the TransactionRules that would recreate that group. Once a set of rules is found, the TransactionRuleSet is saved and the records are analyzed. The goal of the analysis is to be able to fill in a ProtoTransaction. The new ProtoTransaction has a foreign key back to the TrasnactionRuleSet that provided the records for the analysis that produced it (the ProtoTransaction). Given the transaction_type found in the analysis, the correct Transaction subtype is identified, further analysis is performed if necessary to fill in the subtype characteristics. And we're done.
 
 ## Notes from transaction rule sets 
 

@@ -7,6 +7,12 @@ body {
 	background-color: #ccffcc;
 }
 
+a.button {
+	border: 1px solid black;
+	padding: 3px;
+	text-align: center;
+}
+
 li {
 	background-color: #ccffcc;	
 }
@@ -63,17 +69,23 @@ body.dark #tabs > div.selected {
 ul.menu > li,
 ul.tabs > li {
 	display: inline-block;
-	padding: 12px;
-	width: 150px;	
-	text-align: center;	
+	/* padding: 12px; */
+	width: 150px;
+	text-align: center;
 	border: 1px solid black;
-	color: #999999;
-	font-weight: normal;	
+	align-items: center;
+	/* color: #999999; */
+	/* font-weight: normal;	 */
 }
 
 ul.tabs > li.selected {	
 	color: black;
 	font-weight: bold;
+}
+
+ul.tabs li.account,
+ul.tabs li.creditcard {
+	padding: .5em;	
 }
 
 .negative {
@@ -96,8 +108,45 @@ input[type='file'] {
 	width: 100%;
 }
 
+table {
+    font-weight: 100;
+    font-size: 0.9em;
+}
+
+table#record_group_table {
+    margin-left: -100px;
+    margin-right: 30px;
+}
+
+table tr th{
+}
+
+table tr.even {
+    background-color: #66cc66;
+    color: black;
+}
+
+table tr.odd {
+    background-color: #99ff99;
+    color: black;
+}
+
+table tr:hover {
+    background-color: #00ff00;
+}
+
+table tr.selected {
+    background-color: #00ff00;
+}
+
+table tr td {
+    padding: .5em;
+    word-wrap: normal;
+}
+
 table.heatmap_table td {
-	padding: 1em;
+	width: 100px;
+	height: 50px;
 }
 
 .heat-0 {
@@ -114,10 +163,29 @@ table.heatmap_table td {
 	display: inline;
 }
 
-.heatmap_region {
+td[class*="heat-"] {
+}
+
+td[class*="heat-"] span.day {
+	font-weight: bold;
 	position: relative;
-	margin-right: -15px;
-	margin-top: -15px;
+	float: left;
+	font-size: 1.5em;
+	margin-top: -10px;
+	margin-left: -5px;
+}
+
+td[class*="heat-"] span.heat {
+	color: #990000;
+	margin-left: 5px;	
+	font-size: 2em;
+}
+
+td[class*="heat-"] span.heatmap_region {
+	color: #009900;
+	position: relative;
+	margin-right: -3px;
+	margin-top: -10px;
 	float: right;
 	font-size: x-small;
 }

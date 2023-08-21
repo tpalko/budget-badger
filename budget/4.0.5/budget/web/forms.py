@@ -1,12 +1,13 @@
 from turtle import hideturtle
 from django.db.models import Q
-from django.forms import Form, ModelChoiceField, ModelForm, HiddenInput, CharField, ChoiceField, BaseFormSet, DecimalField, formset_factory
+from django.forms import Form, ModelChoiceField, ModelForm, HiddenInput, CharField, ChoiceField, BooleanField, BaseFormSet, DecimalField, formset_factory
 from django.forms.models import modelformset_factory, BaseModelFormSet
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
-from web.models import BaseModel, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
+from web.models import BaseModel, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
 import logging 
 import web.util.dates as utildates
+from web.util.modelutil import TransactionTypes
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +54,43 @@ class TransactionRuleSetForm(ModelForm):
 
     class Meta:
         model = TransactionRuleSet 
-        fields = ['id', 'name', 'join_operator']
+        fields = ['id', 'name', 'join_operator', 'priority']
     
     join_operator = ChoiceField(choices=TransactionRuleSet.join_operator_choices)
     id = CharField(widget=HiddenInput(), required=False)
+
+    def __init__(self, *args, **kwargs):
+
+        i = kwargs['instance'] if 'instance' in kwargs else TransactionRuleSet()
+
+        trs = TransactionRuleSet.objects.filter(is_auto=i.is_auto)
+        max = max([ rs.priority for rs in trs ]) + 1
+
+        if 'instance' in kwargs:
+            kwargs['instance'].priority = kwargs['instance'].priority or 10
+        else:
+            kwargs['instance'] = TransactionRuleSet(priority=10)
+
+        super(TransactionRuleSetForm, self).__init__(*args, **kwargs)
+
+
+    def clean(self):        
+
+        super(TransactionRuleSetForm, self).clean()
+
+        # -- renumber transaction rule sets 
+        priority = self.cleaned_data['priority']
+        rs = TransactionRuleSet.objects.filter(is_auto=self.cleaned_data['is_auto']).order_by('priority')
+
+        found = False 
+
+        for ruleset in rs:
+            if rs.priority < priority:
+                continue 
+            if rs.priority >= priority:
+                rs.priority += 1
+                rs.save()
+
     
 class RecordTypeForm(ModelForm):
 
@@ -122,9 +156,10 @@ class UploadedFileForm(ModelForm):
 
     class Meta:
         model = UploadedFile 
-        fields = ['upload', 'account', 'creditcard', 'original_filename']
+        fields = ['upload', 'account', 'creditcard', 'original_filename', 'header_included']
     
     original_filename = CharField(widget=HiddenInput())
+    header_included = BooleanField()
 
     def __init__(self, *args, **kwargs):
         post_copy = None 
@@ -166,6 +201,8 @@ class TransactionForm(ModelForm):
     id = CharField(widget=HiddenInput(), required=False)
     is_imported = CharField(widget=HiddenInput())
     record_ids = CharField(widget=HiddenInput(), required=False)
+    tax_category = ChoiceField(choices=TransactionTypes.tax_category_choices, required=False)
+    property = ModelChoiceField(queryset=Property.objects.all(), required=False)
 
     def __init__(self, *args, **kwargs):
         
@@ -185,8 +222,8 @@ class TransactionForm(ModelForm):
             # logger.warning(f'Amount for {transaction_type}: {amount}')
             amount_sign = "positive" if amount > 0 else "negative" if amount < 0 else None 
             
-            if transaction_type == Transaction.TRANSACTION_TYPE_INCOME and amount_sign == "negative" \
-                or transaction_type != Transaction.TRANSACTION_TYPE_INCOME and amount_sign == "positive":
+            if transaction_type == TransactionTypes.TRANSACTION_TYPE_INCOME and amount_sign == "negative" \
+                or transaction_type != TransactionTypes.TRANSACTION_TYPE_INCOME and amount_sign == "positive":
                 
                 self.cleaned_data['amount'] = -self.cleaned_data['amount']
                 # name = self.cleaned_data["name"]
@@ -235,18 +272,13 @@ class SingleTransactionForm(TransactionForm):
         model = SingleTransaction
         fields = BASE_TRANSACTION_FIELDS + ['transaction_at', 'creditcardtransaction', 'property', 'tax_category']
     
-    tax_category = ChoiceField(choices=Transaction.tax_category_choices, required=False)
-    property = ModelChoiceField(queryset=Property.objects.all(), required=False)
-
 class RecurringTransactionForm(TransactionForm):
 
     class Meta:
         model = RecurringTransaction
         fields = BASE_TRANSACTION_FIELDS + ['period', 'started_at', 'cycle_due_date', 'is_variable', 'property', 'tax_category'] #, 'transactionruleset']
 
-    period = ChoiceField(choices=RecurringTransaction.period_choices)
-    tax_category = ChoiceField(choices=Transaction.tax_category_choices, required=False)
-    property = ModelChoiceField(queryset=Property.objects.all(), required=False)
+    period = ChoiceField(choices=TransactionTypes.period_choices)
     # transactionruleset = ModelChoiceField(queryset=TransactionRuleSet.objects.all(), required=False)
 
 class IncomeForm(RecurringTransactionForm):
@@ -266,6 +298,12 @@ class CreditCardTransactionForm(RecurringTransactionForm):
         # if args and 'amount' not in args and instance:
         #     args['amount'] = instance.expense_total()
         super(CreditCardTransactionForm, self).__init__(*args, **kwargs)
+
+class UtilityTransactionForm(RecurringTransactionForm):
+
+    class Meta:
+        model = UtilityTransaction 
+        fields = BASE_TRANSACTION_FIELDS + ['period', 'started_at', 'cycle_due_date', 'is_variable', 'property', 'tax_category'] #, 'transactionruleset']
 
 class DebtTransactionForm(RecurringTransactionForm):
 
@@ -312,10 +350,10 @@ CreditCardExpenseFormSet = modelformset_factory(
 
 
 form_types = {
-    Transaction.TRANSACTION_TYPE_SINGLE: SingleTransactionForm,
-    Transaction.TRANSACTION_TYPE_INCOME: IncomeForm,
-    Transaction.TRANSACTION_TYPE_UTILITY: RecurringTransactionForm,
-    Transaction.TRANSACTION_TYPE_CREDITCARD: CreditCardTransactionForm,
-    Transaction.TRANSACTION_TYPE_DEBT: DebtTransactionForm,
-    Transaction.TRANSACTION_TYPE_UNKNOWN: SingleTransactionForm,
+    TransactionTypes.TRANSACTION_TYPE_SINGLE: SingleTransactionForm,
+    TransactionTypes.TRANSACTION_TYPE_INCOME: IncomeForm,
+    TransactionTypes.TRANSACTION_TYPE_UTILITY: RecurringTransactionForm,
+    TransactionTypes.TRANSACTION_TYPE_CREDITCARD: CreditCardTransactionForm,
+    TransactionTypes.TRANSACTION_TYPE_DEBT: DebtTransactionForm,
+    TransactionTypes.TRANSACTION_TYPE_UNKNOWN: SingleTransactionForm,
 }

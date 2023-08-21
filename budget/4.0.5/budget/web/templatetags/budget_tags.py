@@ -6,6 +6,10 @@ from datetime import datetime
 register = template.Library()
 
 @register.filter()
+def gt(than, num):
+	return than < num 
+
+@register.filter()
 def dirme(thing):
 	return dir(thing)
 
@@ -30,7 +34,9 @@ def array_split(array, split_by):
 
 @register.filter()
 def format_currency(val):
-	return f'{val:.2f}'
+	if not val:
+		val = 0
+	return f'{float(val):.2f}'
 
 @register.filter()
 def lookup(obj, key):

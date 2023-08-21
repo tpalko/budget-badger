@@ -1,21 +1,24 @@
 {% load budget_tags %}
 
 <div class="row">
-    <div class="col-7">
+    <div class="col-16">
         <h2>Month Heatmap</h2>
         <table class="heatmap_table">
             <tr>
                 {% for day in 31|genrange %}
                     <td class="heat-{% if heatmap_data.heatmap_normalized|lookup:day %}{{ heatmap_data.heatmap_normalized|lookup:day }}{% else %}0{% endif %}" data-region="{{ heatmap_data.heatmap_region_lookup|lookup:day }}">
-                        {{ day }} ({% if heatmap_data.heatmap|lookup:day %}{{ heatmap_data.heatmap|lookup:day }}{% else %}0{% endif %})
-                        <div class="heatmap_region">{{ heatmap_data.heatmap_region_lookup|lookup:day }}</div>
+                        <span class="day">{{ day }}</span>
+                        <span class="heat">{% if heatmap_data.heatmap|lookup:day %}{{ heatmap_data.heatmap|lookup:day }}{% else %}0{% endif %}</span>
+                         <span class="heatmap_region">{{ heatmap_data.heatmap_region_lookup|lookup:day }}</span>
                     </td>
                     {% if day|mod:7 == 0 %}</tr><tr>{% endif %}
                 {% endfor %}
             </tr>            
         </table>
     </div>
-    <div class="col-7 col-offset-1">
+</div>
+<div class="row">
+    <div class="col-16">
         <h2>Week Heatmap</h2>
         <table class="heatmap_table">
             <tr>

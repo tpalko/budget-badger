@@ -1,0 +1,47 @@
+{% load budget_tags %}
+
+<table>
+    <tr>
+        <th></th>
+        <th>Priority</th>
+        <th>Ruleset</th>        
+        <th>Rules</th>
+        <th># Records</th>
+        <th>xAcct</th>
+        <th>Transaction Type</th>
+        <th>Amount</th>
+        <th>Period</th>
+    </tr>
+{% for transactionruleset in table %}
+    <tr title="{% if transactionruleset.prototransaction %}{{ transactionruleset.prototransaction.stats }}{% endif %}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <td nowrap>
+            <a href="{%  url "transactionrulesets_list" tenant_id=1 transactionruleset_id=transactionruleset.id %}">edit</a>
+            {% if not transactionruleset.is_auto %}
+            <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}" class="delete">delete</a>
+            {% endif %}
+        </td>
+        <td>{{ transactionruleset.priority }}</td>
+        <td nowrap>{{ transactionruleset.name }}</td>        
+        <td nowrap>
+            {% for transactionrule in transactionruleset.transactionrules.all %}
+            <div>
+                #{{ forloop.counter }}. {% if forloop.counter0 > 0 %}{{ transactionruleset.join_operator }}{% endif %}{{ transactionrule.record_field }} {{ transactionrule.match_operator }} {{ transactionrule.match_value}}
+            </div>
+            {% endfor %}
+        </td>
+        <td nowrap>{{ transactionruleset.records|length }}</td>
+        {% if transactionruleset.prototransaction %}
+            <td nowrap>{{ transactionruleset.prototransaction.cross_account }}</td>
+            <td nowrap>{{ transactionruleset.prototransaction.transaction_type }}</td>
+            <td nowrap>{{ transactionruleset.prototransaction.stats.monthly_amount|format_currency }}</td>
+            <td nowrap>{{ transactionruleset.prototransaction.period }}</td>            
+        {% else %}
+            <td nowrap>-</td>
+            <td nowrap>-</td>
+            <td nowrap>-</td>
+            <td nowrap>-</td>
+        {% endif %}
+        
+    </tr>
+{% endfor %}
+</table>    

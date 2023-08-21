@@ -6,12 +6,10 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator, MaxValueValidator
 import logging
 from datetime import datetime, timedelta, date
-from decimal import *
 import calendar
-import re
 import json 
 import web.util.dates as utildates
-from web.modelutil import choiceify
+from web.util.modelutil import choiceify, TransactionTypes
 
 logger = logging.getLogger(__name__)
 
@@ -101,40 +99,134 @@ class Vehicle(BaseModel):
     model = models.CharField(max_length=255, null=True)
     year = models.IntegerField(null=True)
 
-class Transaction(BaseModel):
+def records_from_rules(filters, join_operator):
+    
+    # logger.warning(f'matching records on {json.dumps(filters, indent=4)}')
+    qs = None 
 
-    TRANSACTION_TYPE_SINGLE = 'single'
-    TRANSACTION_TYPE_INCOME = 'income'
-    TRANSACTION_TYPE_UTILITY = 'utility'
-    TRANSACTION_TYPE_DEBT = 'debt'
-    TRANSACTION_TYPE_CREDITCARD = 'creditcard'
-    TRANSACTION_TYPE_UNKNOWN = 'unknown'
+    if join_operator == TransactionRuleSet.JOIN_OPERATOR_AND:
+        qs = Record.objects.all()
+        for filter in filters:
+            qs = qs.filter(**filter).order_by('-transaction_date')
+        
+    elif join_operator == TransactionRuleSet.JOIN_OPERATOR_OR:
+        
+        q = Q()
+        for filter in filters:
+            q = Q(q | Q(**filter))
 
-    type_choices = (
-        (TRANSACTION_TYPE_SINGLE, 'Single'),
-        (TRANSACTION_TYPE_INCOME, 'Income'),
-        (TRANSACTION_TYPE_UTILITY, 'Utility'),
-        (TRANSACTION_TYPE_DEBT, 'Debt'),
-        (TRANSACTION_TYPE_CREDITCARD, 'Credit Card'),
-        (TRANSACTION_TYPE_UNKNOWN, 'Unknown'),
+        qs = Record.objects.filter(q).order_by('-transaction_date')
+    
+    return list(qs)
+
+class TransactionRuleSet(BaseModel):
+    '''A general filter for records'''
+
+    JOIN_OPERATOR_AND = 'and'
+    JOIN_OPERATOR_OR = 'or'
+
+    join_operator_choices = choiceify([JOIN_OPERATOR_AND, JOIN_OPERATOR_OR])
+
+    name = models.CharField(max_length=255, null=False)
+    join_operator = models.CharField(max_length=3, choices=join_operator_choices, null=False)
+    is_auto = models.BooleanField(null=False, default=False)
+    priority = models.IntegerField(null=False, default=0)
+    _records = None 
+    # transaction = None 
+
+    def records(self, refresh=False):
+
+        if not self._records or refresh:
+            filters = [ tr.filter() for tr in self.transactionrules.all() ]
+            self._records = records_from_rules(filters, self.join_operator)
+        
+        return self._records 
+
+class TransactionRule(BaseModel):
+    '''A building block for TransactionRuleSet'''
+
+    MATCH_OPERATOR_LT_HUMAN = '<'
+    MATCH_OPERATOR_EQUALS_HUMAN = '='
+    MATCH_OPERATOR_GT_HUMAN = '>'
+    MATCH_OPERATOR_CONTAINS_HUMAN = 'contains'
+
+    MATCH_OPERATOR_LT_DJANGO = '__lt'
+    MATCH_OPERATOR_EQUALS_DJANGO = ''
+    MATCH_OPERATOR_GT_DJANGO = '__gt'
+    MATCH_OPERATOR_CONTAINS_DJANGO = '__icontains'
+
+    match_operator_lookup = {
+        MATCH_OPERATOR_LT_HUMAN: MATCH_OPERATOR_LT_DJANGO,
+        MATCH_OPERATOR_EQUALS_HUMAN: MATCH_OPERATOR_EQUALS_DJANGO,
+        MATCH_OPERATOR_GT_HUMAN: MATCH_OPERATOR_GT_DJANGO,
+        MATCH_OPERATOR_CONTAINS_HUMAN: MATCH_OPERATOR_CONTAINS_DJANGO
+    }
+
+    match_operator_choices = (
+        (MATCH_OPERATOR_GT_HUMAN, MATCH_OPERATOR_GT_HUMAN),
+        (MATCH_OPERATOR_EQUALS_HUMAN, MATCH_OPERATOR_EQUALS_HUMAN),
+        (MATCH_OPERATOR_LT_HUMAN, MATCH_OPERATOR_LT_HUMAN),
+        (MATCH_OPERATOR_CONTAINS_HUMAN, MATCH_OPERATOR_CONTAINS_HUMAN),
     )
 
-    TAX_CATEGORY_NONE = 'none'
-    TAX_CATEGORY_TAX = 'tax'
-    TAX_CATEGORY_UTILITY = 'utility'
-    TAX_CATEGORY_REPAIR = 'repair'
-    TAX_CATEGORY_MAINTENANCE = 'maintenance'
-    TAX_CATEGORY_INSURANCE = 'insurance'
+    transactionruleset = models.ForeignKey(TransactionRuleSet, related_name='transactionrules', on_delete=models.CASCADE)
+    record_field = models.CharField(max_length=50, null=True)
+    match_operator = models.CharField(max_length=20, null=True, choices=match_operator_choices)
+    match_value = models.CharField(max_length=100, null=True)    
 
-    tax_category_choices = choiceify([TAX_CATEGORY_NONE, TAX_CATEGORY_TAX, TAX_CATEGORY_UTILITY, TAX_CATEGORY_REPAIR, TAX_CATEGORY_MAINTENANCE, TAX_CATEGORY_INSURANCE])
+    def __str__(self):
+        return f'{self.record_field}{self.match_operator}{self.match_value}'
 
-    # (
-    #     (TAX_CATEGORY_TAX, f'{TAX_CATEGORY_TAX[0].upper()}{TAX_CATEGORY_TAX[1:]}'),
-    #     (TAX_CATEGORY_UTILITY, f'{TAX_CATEGORY_UTILITY[0].upper()}{TAX_CATEGORY_UTILITY[1:]}'),
-    #     (TAX_CATEGORY_REPAIR, f'{TAX_CATEGORY_REPAIR[0].upper()}{TAX_CATEGORY_REPAIR[1:]}'),
-    #     (TAX_CATEGORY_MAINTENANCE, f'{TAX_CATEGORY_MAINTENANCE[0].upper()}{TAX_CATEGORY_MAINTENANCE[1:]}'),
-    #     (TAX_CATEGORY_INSURANCE, f'{TAX_CATEGORY_INSURANCE[0].upper()}{TAX_CATEGORY_INSURANCE[1:]}')
-    # )
+    def filter(self):
+        return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
+
+class ProtoTransaction(BaseModel):
+    '''A transitional object between a rule set -- a logical grouping of records, and a full-on transaction -- a budgetable spending abstraction'''
+
+    EXCLUDE_STAT_FIELDS = ['record_count', 'record_ids']
+
+    name = models.CharField(max_length=200, unique=True)
+    amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
+    account = models.ForeignKey(to=Account, related_name='prototransactions', on_delete=models.SET_NULL, null=True)    
+    stats = models.JSONField(null=True)
+    property = models.ForeignKey(to=Property, related_name='prototransactions', on_delete=models.SET_NULL, null=True)
+    tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
+    transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
+    transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)
+    
+    def cross_account(self):
+        all = self.stats['accounts'] + self.stats['creditcards']
+        return len(all) != 1
+
+    def update_stats(self, stats):
+        fields = [ f.name for f in ProtoTransaction._meta.fields ]
+        self.stats = { s: stats[s] for s in stats if s not in fields and s not in ProtoTransaction.EXCLUDE_STAT_FIELDS }
+
+    @staticmethod
+    def new_from(name, stats, transaction_rule_set):
+        
+        fields = [ f.name for f in ProtoTransaction._meta.fields ]
+
+        pt_dict = {
+            'name': name,
+            'stats': { s: stats[s] for s in stats if s not in fields and s not in ProtoTransaction.EXCLUDE_STAT_FIELDS },
+            'transactionruleset': transaction_rule_set,
+            **{ s: stats[s] for s in stats if s in fields }
+        }
+
+        return ProtoTransaction.objects.create(**pt_dict)
+
+    @staticmethod
+    def new_from_rule_attempt(rule_attempt, stats, transaction_rule_set):
+
+        name = f'{rule_attempt["record_field"]} {rule_attempt["match_operator"]} {rule_attempt["match_value"]}'
+        return ProtoTransaction.new_from(name, stats, transaction_rule_set)
+
+    def __str__(self):
+        return self.name 
+
+class Transaction(BaseModel):
 
     name = models.CharField(max_length=200, unique=True)
     slug = AutoSlugField(null=False, default=None, unique=True, populate_from='name')
@@ -142,14 +234,15 @@ class Transaction(BaseModel):
     amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
     account = models.ForeignKey(to=Account, related_name='transactions', on_delete=models.SET_NULL, null=True)
     property = models.ForeignKey(to=Property, related_name='transactions', on_delete=models.SET_NULL, null=True)
-    tax_category = models.CharField(max_length=50, choices=tax_category_choices, default=TAX_CATEGORY_NONE, null=True)
-    transaction_type = models.CharField(max_length=50, choices=type_choices, default=TRANSACTION_TYPE_DEBT)
+    prototransaction = models.OneToOneField(to=ProtoTransaction, related_name='transaction', on_delete=models.CASCADE, null=True)
+    tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
+    transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
     is_active = models.BooleanField(null=False, default=True)
     is_imported = models.BooleanField(null=False, default=False)
 
     def real_amount(self, payment_at=None):
 
-        if self.transaction_type == Transaction.TRANSACTION_TYPE_CREDITCARD:
+        if self.transaction_type == TransactionTypes.TRANSACTION_TYPE_CREDITCARD:
             return self.recurringtransaction.creditcardtransaction.expense_total(payment_at)
         else:
             return self.amount
@@ -160,103 +253,16 @@ class Transaction(BaseModel):
     def __str__(self):
         return self.name
 
-def records_from_rules(filters, join_operator):
-    
-    logger.warning(f'matching records on {json.dumps(filters, indent=4)}')
-    records = [] 
-
-    if join_operator == TransactionRuleSet.JOIN_OPERATOR_AND:
-        record_queryset = Record.objects.all()
-        for filter in filters:
-            record_queryset = record_queryset.filter(**filter)
-        records = list(record_queryset)
-    elif join_operator == TransactionRuleSet.JOIN_OPERATOR_OR:
-        record_querysets = [ Record.objects.filter(**filter) for filter in filters ]
-        records = []
-        for rq in record_querysets:
-            records = set(list(records) + list(rq))
-    
-    return list(records)
-
-class TransactionRuleSet(BaseModel):
-
-    JOIN_OPERATOR_AND = 'and'
-    JOIN_OPERATOR_OR = 'or'
-
-    join_operator_choices = choiceify([JOIN_OPERATOR_AND, JOIN_OPERATOR_OR])
-
-    name = models.CharField(max_length=255, null=False)
-    join_operator = models.CharField(max_length=3, choices=join_operator_choices, null=False)
-
-    _records = None 
-    # transaction = None 
-
-    def records(self):
-
-        if not self._records:
-            filters = [ tr.filter() for tr in self.transactionrules.all() ]
-            self._records = records_from_rules(filters, self.join_operator)
-        
-        return self._records 
-
-class TransactionRule(BaseModel):
-
-    match_operator_lookup = {
-        '<': '__lt',
-        '=': '',
-        '>': '__gt',
-        'contains': '__icontains'
-    }
-
-    match_operator_choices = (
-        ('>', '>'),
-        ('=', '='),
-        ('<', '<'),
-        ('contains', 'contains'),
-    )
-
-    transactionruleset = models.ForeignKey(TransactionRuleSet, related_name='transactionrules', on_delete=models.CASCADE)
-    record_field = models.CharField(max_length=50, null=True)
-    match_operator = models.CharField(max_length=20, null=True, choices=match_operator_choices)
-    match_value = models.CharField(max_length=100, null=True)    
-
-    def filter(self):
-        return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
-
 class RecurringTransaction(Transaction):
-
-    period_choices = (
-        (utildates.PERIOD_UNKNOWN, 'Unknown'),
-        (utildates.PERIOD_WEEKLY, 'Weekly'),
-        (utildates.PERIOD_BIWEEKLY, 'Bi-Weekly'),
-        (utildates.PERIOD_MONTHLY, 'Monthly'),
-        (utildates.PERIOD_QUARTERLY, 'Quarterly'),
-        (utildates.PERIOD_SEMIYEARLY, 'Semi-Yearly'),
-        (utildates.PERIOD_YEARLY, 'Yearly')
-    )
-
-    period_week_lengths = {
-        utildates.PERIOD_WEEKLY: 7,
-        utildates.PERIOD_BIWEEKLY: 14
-    }
-
-    period_monthly_occurrence = {
-        utildates.PERIOD_WEEKLY: Decimal(52.0/12),
-        utildates.PERIOD_BIWEEKLY: Decimal(26.0/12),
-        utildates.PERIOD_MONTHLY: Decimal(1.0),
-        utildates.PERIOD_QUARTERLY: Decimal(1.0/3),
-        utildates.PERIOD_SEMIYEARLY: Decimal(1.0/6),
-        utildates.PERIOD_YEARLY: Decimal(1.0/12)
-    }
 
     transactionruleset = models.OneToOneField(TransactionRuleSet, related_name='recurringtransaction', on_delete=models.SET_NULL, null=True)
     started_at = models.DateField(default=date.today, blank=True, null=True)
     cycle_due_date = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)], default=1, blank=True, null=True)
-    period = models.CharField(max_length=50, choices=period_choices, default=utildates.PERIOD_MONTHLY)
+    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
     is_variable = models.BooleanField(null=False, default=False)
     
     def monthly_amount(self):
-        return self.real_amount()*RecurringTransaction.period_monthly_occurrence[self.period]
+        return self.real_amount()*utildates.period_monthly_occurrence[self.period]
 
     def next_payment_date(self):
         '''Calculates and returns the next date this transaction will occur'''
@@ -264,7 +270,7 @@ class RecurringTransaction(Transaction):
 
         start_date = (now - timedelta(days=1)).date()
 
-        if self.period == utildates.PERIOD_MONTHLY:
+        if self.period == TransactionTypes.PERIOD_MONTHLY:
             if self.cycle_due_date >= now.day:
                 (first_day, days) = calendar.monthrange(now.year, now.month)
                 if self.cycle_due_date > days:
@@ -275,7 +281,7 @@ class RecurringTransaction(Transaction):
                 new_month = utildates.next_month(now, self.period)
                 new_year = utildates.next_year(now, self.period)
                 start_date = now.replace(day=self.cycle_due_date, month=new_month, year=new_year).date()
-        elif self.period in (utildates.PERIOD_WEEKLY, utildates.PERIOD_BIWEEKLY):
+        elif self.period in (TransactionTypes.PERIOD_WEEKLY, TransactionTypes.PERIOD_BIWEEKLY):
             start_date = self.started_at
             while start_date < now.date():
                 start_date += timedelta(days=self.period_week_lengths[self.period])
@@ -288,7 +294,7 @@ class RecurringTransaction(Transaction):
 
     def advance_payment_date(self, start_date):
 
-        if self.period in (utildates.PERIOD_WEEKLY, utildates.PERIOD_BIWEEKLY):
+        if self.period in (TransactionTypes.PERIOD_WEEKLY, TransactionTypes.PERIOD_BIWEEKLY):
             start_date += timedelta(days=self.period_week_lengths[self.period])
         else:
             new_month = utildates.next_month(start_date, self.period)
@@ -299,6 +305,9 @@ class RecurringTransaction(Transaction):
             start_date = start_date.replace(month=new_month, year=new_year)
 
         return start_date
+
+class UtilityTransaction(RecurringTransaction):
+    pass 
 
 class CreditCardTransaction(RecurringTransaction):
 
@@ -368,15 +377,15 @@ class SingleTransaction(Transaction):
         if self.creditcardtransaction.cycle_billing_date >= self.transaction_at.day:
             billing_date = self.transaction_at.replace(day=self.creditcardtransaction.cycle_billing_date)
         else:
-            new_month = utildates.next_month(self.transaction_at, RecurringTransaction.PERIOD_MONTHLY)
-            new_year = utildates.next_year(self.transaction_at, RecurringTransaction.PERIOD_MONTHLY)
+            new_month = utildates.next_month(self.transaction_at, TransactionTypes.PERIOD_MONTHLY)
+            new_year = utildates.next_year(self.transaction_at, TransactionTypes.PERIOD_MONTHLY)
             billing_date = self.transaction_at.replace(day=self.creditcardtransaction.cycle_billing_date, month=new_month, year=new_year)
 
         if self.creditcardtransaction.cycle_due_date >= billing_date.day:
             due_date = billing_date.replace(day=self.creditcardtransaction.cycle_due_date)
         else:
-            new_month = utildates.next_month(billing_date, RecurringTransaction.PERIOD_MONTHLY)
-            new_year = utildates.next_year(billing_date, RecurringTransaction.PERIOD_MONTHLY)
+            new_month = utildates.next_month(billing_date, TransactionTypes.PERIOD_MONTHLY)
+            new_year = utildates.next_year(billing_date, TransactionTypes.PERIOD_MONTHLY)
             due_date = billing_date.replace(day=self.creditcardtransaction.cycle_due_date, month=new_month, year=new_year)
         return due_date
 
@@ -405,6 +414,7 @@ class UploadedFile(BaseModel):
     account = models.ForeignKey(to=Account, related_name='uploadedfiles', on_delete=models.CASCADE, null=True, blank=True)
     creditcard = models.ForeignKey(to=CreditCard, related_name='uploadedfiles', on_delete=models.PROTECT, null=True, blank=True)
     original_filename = models.CharField(max_length=255, unique=True, null=True)    
+    header_included = models.BooleanField(null=False, default=True)
     first_date = models.DateField(null=True)
     last_date = models.DateField(null=True)
     record_count = models.IntegerField(null=False, default=0)
@@ -435,20 +445,13 @@ class Record(BaseModel):
 
     extra_fields = models.JSONField(null=True)
 
-    # -- delete vvv
-    type = models.CharField(max_length=255, null=True)    
-    account_type = models.CharField(max_length=255, null=True)    
-    ref = models.CharField(max_length=255, blank=True, null=True)
-    credits = models.DecimalField(decimal_places=2, max_digits=20, null=True)
-    debits = models.DecimalField(decimal_places=2, max_digits=20, null=True)
-
     # def __init__(self, *args, **kwargs):
     #     super(Record, self).__init__(*args, **kwargs)
         # if self.uploaded_file_id:
         #     self.account = self.uploaded_file.account
 
     def __str__(self):
-        return f'{self.id}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
+        return f'{self.id}, {self.account or self.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
 
     # def save(self, *args, **kwargs):        
     #     self.clean()

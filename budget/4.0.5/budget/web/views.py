@@ -1,4 +1,3 @@
-from tkinter import E
 from django.db.models import Q
 from django.shortcuts import render, redirect
 from django.core.exceptions import ValidationError
@@ -15,12 +14,13 @@ from datetime import datetime, timedelta
 import logging
 import traceback
 from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, RecordForm, UploadedFileForm, AccountForm, TransactionForm, TransactionIntakeForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Vehicle, Property, Account, Record, RecordGroup, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, CreditCardExpense
-from web.viewutil import get_records_for_filter, get_recordgroup_data, get_heatmap_data, get_records_template_data, transaction_type_display
+from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Vehicle, Property, Account, Record, RecordGroup, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, CreditCardExpense, ProtoTransaction
+from web.util.viewutil import get_records_for_filter, get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
-from web.modelutil import process_uploaded_file 
-from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
+from web.util.modelutil import TransactionTypes
+from web.util.viewutil import process_uploaded_file, save_processed_records
+# from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
 # from django.core import serializers
 
 logger = logging.getLogger(__name__)
@@ -74,14 +74,16 @@ def model_edit(request, tenant_id, model_name, model_id=None):
     
     return render(request, f'model_edit.html', {'form': form, 'model_name': model_map[model_name]['model'].__name__})
 
-def transactionrulesets_list(request, tenant_id):
+def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     
     message = ""
 
     try:
 
-        transactionrulesets = TransactionRuleSet.objects.all()
-        if True:
+        transactionrulesets_auto = TransactionRuleSet.objects.filter(is_auto=True)
+        transactionrulesets_manual = TransactionRuleSet.objects.filter(is_auto=False)
+
+        if False:
             for trs in transactionrulesets:
                 record_stats = RecordGrouper.get_stats(trs.records())
                 # logger.warning(record_stats['transaction_type'])
@@ -121,13 +123,22 @@ def transactionrulesets_list(request, tenant_id):
         traceback.print_tb(sys.exc_info()[2])
 
     TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=1)
+    transactionruleset = TransactionRuleSet()
     transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
-    # transactionrule_formset.forms.append(TransactionRuleForm())
     transactionruleset_form = TransactionRuleSetForm()
     
+    transactionrules = []
+
+    if transactionruleset_id:
+        TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=0)
+        transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
+        transactionrules = TransactionRule.objects.filter(transactionruleset_id=transactionruleset_id)
+        transactionrule_formset = TransactionRuleFormSet(queryset=transactionrules)
+        transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
+
     template_data = {
-        'transactionrulesets': transactionrulesets,
-        'recordgroup_data': get_recordgroup_data(),
+        'transactionrulesets_auto': sorted(transactionrulesets_auto, key=lambda t: len(t.records()), reverse=True),
+        'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: len(t.records()), reverse=True),
         'message': message,
         'transactionruleset_form': transactionruleset_form,
         'recordfields': [ f.name for f in Record._meta.fields ],
@@ -142,7 +153,7 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
     TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=1)
     transactionruleset = TransactionRuleSet()
     transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
-    transactionrule_formset.forms.append(TransactionRuleForm())
+    # transactionrule_formset.forms.append(TransactionRuleForm())
     transactionruleset_form = TransactionRuleSetForm()
 
     transactionrules = []
@@ -209,34 +220,37 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     # for form in transactionrule_formset:                                                  
                     #     record_queryset = records_from_rule(form.cleaned_data['record_field'], form.cleaned_data['match_operator'], form.cleaned_data['match_value'], transactionruleset_form.cleaned_data['join_operator'], record_queryset=record_queryset)
 
-                    if record_queryset:
+                    # if record_queryset:
                         
-                        record_data = [ { 
-                            'id': r.id, 
-                            'transaction_date': r.transaction_date, 
-                            'description': r.description, 
-                            'amount': r.amount, 
-                            'transaction': str(r.transaction) if r.transaction else None 
-                        } for r in record_queryset ]
-                        
-                        response['data']['records'] = record_data 
+                    record_data = [ { 
+                        'id': r.id, 
+                        'transaction_date': r.transaction_date, 
+                        'description': r.description, 
+                        'amount': r.amount, 
+                        'account': r.account.name if r.account else r.creditcard.name,              
+                        'extra_fields': r.extra_fields,              
+                        'transaction': str(r.transaction) if r.transaction else None 
+                    } for r in record_queryset ]
+                    
+                    response['data']['records'] = record_data 
 
-                        unaccounted_record_ids = [ str(r['id']) for r in record_data if not r['transaction'] ]
-                        response['data']['unaccounted_record_ids'] = ",".join(unaccounted_record_ids)
-                        
-                        recordstats = {
-                            'total_record_count': len(record_data),
-                            'unaccounted_record_count': len(unaccounted_record_ids),
-                            **get_records_template_data(record_queryset)
-                        }
+                    unaccounted_record_ids = [ str(r['id']) for r in record_data if not r['transaction'] ]
+                    response['data']['unaccounted_record_ids'] = ",".join(unaccounted_record_ids)
+                    
+                    recordstats = {
+                        'total_record_count': len(record_data),
+                        'unaccounted_record_count': len(unaccounted_record_ids),
+                        **get_records_template_data(record_queryset)
+                    }
 
-                        response['data']['recordstats'] = render_to_string("_recordstats.html", context=recordstats)
-                        response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(record_queryset) })
+                    response['data']['recordstats'] = render_to_string("_recordstats.html", context=recordstats)
+                    response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(record_queryset) })
+                    response['data']['ruleresults'] = render_to_string("_ruleresults.html", context={ 'records': record_data })                    
 
-                    else:
-                        message = "No queryset!"
-                        response['messages'].append(message)
-                        logger.error(message)
+                    # else:
+                    #     message = "No queryset!"
+                    #     response['messages'].append(message)
+                    #     logger.error(message)
                     
                     response['success'] = True 
                 
@@ -275,6 +289,16 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
                     trf.is_valid()
                     trf.save()
+                
+                stats = RecordGrouper.get_stats(transactionruleset.records(refresh=True))
+
+                logger.info(dir(transactionruleset))
+                
+                try:
+                    transactionruleset.prototransaction.update_stats(stats)
+                    transactionruleset.prototransaction.save() 
+                except:
+                    proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
 
                 # transactionrule_formset.save() 
 
@@ -339,11 +363,31 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
     try:
         uploadedfile = UploadedFile.objects.get(pk=uploadedfile_id)
         if uploadedfile:
+            others = []
+            if uploadedfile.account:
+                others = UploadedFile.objects.filter(account=uploadedfile.account)
+            elif uploadedfile.creditcard:
+                others = UploadedFile.objects.filter(creditcard=uploadedfile.creditcard)
+            
+            others = [ o for o in others if o.id != uploadedfile.id ]
+
+            logger.info(f'found {len(others)} previously uploaded files for the same account/credit card')
+
+            logger.info(f'deleting up to {uploadedfile.records.count()} records from, and uploaded file {uploadedfile.original_filename}')
             uploadedfile.records.all().delete()
             uploadedfile.delete()
+            
+            for other in others:                
+                other_details = process_uploaded_file(other)
+                logger.info(f'found {len(other_details["records"])} reprocessing uploaded file {other.original_filename}')
+                save_processed_records(other_details['records'], other)
+
             success = True 
+
     except:
-        message = str(sys.exc_info()[1])
+        message = f'{sys.exc_info()[0].__name__}: {str(sys.exc_info()[1])}'
+        logger.error(message)
+        traceback.print_tb(sys.exc_info()[2])
 
     return JsonResponse({'success': success, 'message': message})
 
@@ -356,8 +400,8 @@ def records(request, tenant_id):
     if request.method == "POST":
         record_sort = request.POST['record_sort'] if 'record_sort' in request.POST else '-date' 
 
-    records_by_account = [ { 'obj': a, 'records': Record.objects.filter(account=a) } for a in Account.objects.all() ]
-    records_by_creditcard = [ {'obj': c, 'records': Record.objects.filter(creditcard=c) } for c in CreditCard.objects.all() ]
+    records_by_account = [ { 'obj': a, 'records': Record.objects.filter(account=a).order_by('-post_date') } for a in Account.objects.all() ]
+    records_by_creditcard = [ {'obj': c, 'records': Record.objects.filter(creditcard=c).order_by('-post_date') } for c in CreditCard.objects.all() ]
 
     show_record_columns = ['id', 'transaction_date', 'description', 'amount', 'extra_fields', 'type']
 
@@ -374,62 +418,48 @@ def records(request, tenant_id):
 def files(request, tenant_id):
 
     uploadedfile_form = UploadedFileForm()
+    message = ''
 
-    if request.method == "POST":
+    if request.method == "POST" and 'upload' in request.FILES:
 
-        if 'upload' in request.FILES:
+        logger.debug(request.POST)
+
+        uploadedfile_form = UploadedFileForm(request.POST, request.FILES)
+
+        if uploadedfile_form.is_valid():
+
+            logger.debug(uploadedfile_form.cleaned_data)
             
-            uploadedfile_form = UploadedFileForm(request.POST, request.FILES)
+            logger.warning(f'{uploadedfile_form.cleaned_data["upload"]} is valid')
+            uploadedfile = uploadedfile_form.save()
+            uploadedfile.refresh_from_db()
+            # uploadedfile = UploadedFile.objects.get(pk=uploadedfile.id)
+
+            logger.debug(uploadedfile.creditcard.recordtype.csv_columns)
 
             try:
-                if uploadedfile_form.is_valid():
-                    
-                    logger.warning(f'{uploadedfile_form.cleaned_data["upload"]} is valid')
-                    uploadedfile = uploadedfile_form.save()
-                    uploadedfile = UploadedFile.objects.get(pk=uploadedfile.id)
+                file_details = process_uploaded_file(uploadedfile)
+                uploadedfile.first_date = file_details['first_date']
+                uploadedfile.last_date = file_details['last_date']
+                uploadedfile.record_count = len(file_details['records'])
+                uploadedfile.save()
 
-                    file_details = process_uploaded_file(uploadedfile)
+                save_processed_records(file_details['records'], uploadedfile)
 
-                    uploadedfile.first_date = file_details['first_date']
-                    uploadedfile.last_date = file_details['last_date']
-                    uploadedfile.record_count = len(file_details['records'])
-                    uploadedfile.save()
-                    
-                    for record in file_details['records']:
-                        try:
-                            record_data = { 
-                                **record, 
-                                'uploaded_file': uploadedfile,
-                                'account': uploadedfile.account,
-                                'creditcard': uploadedfile.creditcard,
-                                'description': record['description'] or ''
-                            }
-                            logger.warning(record_data)
-                            record_form = RecordForm(record_data)
-                            record_form.is_valid()
-                            logger.warning(record_form.errors)
-                            record_form.save()
+                RecordGrouper.group_records()
 
-                        except ValidationError as ve:
-                            logger.error(sys.exc_info()[0])
-                            logger.error(sys.exc_info()[1])
-                            traceback.print_tb(sys.exc_info()[2])
-                        except:
-                            logger.error(sys.exc_info()[0])
-                            logger.error(sys.exc_info()[1])
-                            traceback.print_tb(sys.exc_info()[2])
+                return redirect('records', tenant_id=tenant_id)
 
-                    RecordGrouper.group_records()
-
-                    return redirect('records', tenant_id=tenant_id)
             except:
-                message = sys.exc_info()[1]
-                logger.error(message)
+                message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: therefore, deleting uploaded file {uploadedfile.id}'
+                logger.warning(message)
                 traceback.print_tb(sys.exc_info()[2])
-
+                uploadedfile.delete()
+                
     template_data = {
+        'messages': [message],
         'uploadedfile_form': uploadedfile_form,
-        'uploadedfiles': UploadedFile.objects.all()
+        'uploadedfiles': UploadedFile.objects.all().order_by('account_id', 'creditcard_id', 'first_date')
     }
 
     return render(request, "files.html", template_data)
@@ -462,13 +492,13 @@ def projection(request, tenant_id):
     transactions/creditcardexpenses
     plannedpayments
     '''
-    transactionrulesets = TransactionRuleSet.objects.all()
-    for trs in transactionrulesets:
-        records = trs.records()
-        record_stats = RecordGrouper.get_stats(records)
-        form_types[record_stats['transaction_type']].from_stats(record_stats)
-        transaction = Transaction.from_stats(record_stats)
-        PlannedPayment.create_from_transaction(transaction)
+    # transactionrulesets = TransactionRuleSet.objects.all()
+    # for trs in transactionrulesets:
+    #     records = trs.records()
+    #     record_stats = RecordGrouper.get_stats(records)
+    #     form_types[record_stats['transaction_type']].from_stats(record_stats)
+    #     transaction = Transaction.from_stats(record_stats)
+    #     PlannedPayment.create_from_transaction(transaction)
 
     payments = PlannedPayment.objects.order_by('payment_at', 'transaction__amount')
 
@@ -527,14 +557,14 @@ def transactions(request, tenant_id):
     # logger.warning(json.dumps(transaction_sets, indent=4))
 
     single_transactions = SingleTransaction.objects.all().order_by('transaction_at')
-    income_transactions = RecurringTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_INCOME).order_by('name')
+    income_transactions = RecurringTransaction.objects.filter(transaction_type=TransactionTypes.TRANSACTION_TYPE_INCOME).order_by('name')
     debt_transactions = DebtTransaction.objects.all().order_by('-interest_rate')
-    utility_transactions = RecurringTransaction.objects.filter(transaction_type=Transaction.TRANSACTION_TYPE_UTILITY).order_by('name')
+    utility_transactions = RecurringTransaction.objects.filter(transaction_type=TransactionTypes.TRANSACTION_TYPE_UTILITY).order_by('name')
     creditcard_transactions = CreditCardTransaction.objects.all()
 
     transactions = RecurringTransaction.objects.all()
-    total_monthly_out = sum([ o.monthly_amount() for o in transactions if o.transaction_type not in [Transaction.TRANSACTION_TYPE_INCOME] ])
-    total_monthly_in = sum([ o.monthly_amount() for o in transactions if o.transaction_type in [Transaction.TRANSACTION_TYPE_INCOME] ])
+    total_monthly_out = sum([ o.monthly_amount() for o in transactions if o.transaction_type not in [TransactionTypes.TRANSACTION_TYPE_INCOME] ])
+    total_monthly_in = sum([ o.monthly_amount() for o in transactions if o.transaction_type in [TransactionTypes.TRANSACTION_TYPE_INCOME] ])
     monthly_balance = total_monthly_in + total_monthly_out
 
     total_debt = sum([d.principal for d in debt_transactions])
