@@ -45,7 +45,7 @@
             <a id="another_form" href="#">+</a>            
         </div>
 
-        <input type="hidden" name="unaccounted_record_ids" value="" />
+        <!-- <input type="hidden" name="unaccounted_record_ids" value="" /> -->
         <input type="hidden" name="submit_event_type" value="" />
 
         <input type="submit" name="save" value="save" />
@@ -136,7 +136,7 @@
         // if (!data.success){
         //     document.querySelector("#errors").innerText = data.messages;
         if (true) {
-            form.unaccounted_record_ids.value = data.data.unaccounted_record_ids;
+            // form.unaccounted_record_ids.value = data.data.unaccounted_record_ids;
             
             document.querySelector("#recordstats").innerHTML = data.data.recordstats;
             document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;

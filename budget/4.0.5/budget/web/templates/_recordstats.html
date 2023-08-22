@@ -1,12 +1,27 @@
 {% load budget_tags %}
 
 <div>
-    <div>
-        Records: {{ unaccounted_record_count }}/{{ total_record_count }}
-    </div>
     <ul>
+        <li>Records: {{ total_record_count }}</li>
         <li>Total: ${{ amount_sum|format_currency }}</li>
         <li>{{ earliest_date }} to {{ latest_date }} ({{ days }} days, {{ months }} months)</li>
-        <li>{{ records_per_month }} records per month</li>
+        <li>{{ records_per_month }} records per month</li>        
     </ul>
+    <table class="clicky-table">
+        <tr>
+            <th>desc</th>
+            <th>count</th>
+            <th>sum</th>
+            <th>%</th>
+        </tr>
+        {% for name in distinct_names %}        
+        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ name|lookup:'description' }}</td>
+            <td>{{ name|lookup:'stats'|lookup:'count' }}</td>
+            <td>${{ name|lookup:'stats'|lookup:'sum'|format_currency }}</td>
+            <td>{{ name|lookup:'stats'|lookup:'percentage'|floatformat:"0" }}%</td>
+        </tr>
+        {% endfor %}
+        
+    </table>
 </div>

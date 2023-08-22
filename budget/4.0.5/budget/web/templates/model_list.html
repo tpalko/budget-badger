@@ -20,7 +20,7 @@
 
         <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
             <td>{{ recordtype.name }}</td>
-            <td>{{ recordtype.csv_columns|truncatechars:100 }}</td>
+            <td title="{{ recordtype.csv_columns }}">{{ recordtype.csv_columns|truncatechars:100 }}</td>
             <td>{{ recordtype.csv_date_format }}</td>
             <td>
                 <a href="{% url "model_edit" model_name="recordtype" tenant_id=1 model_id=recordtype.id %}">edit</a>

@@ -3,6 +3,7 @@
 from decimal import InvalidOperation
 import sys 
 import os 
+import traceback 
 
 from django.db.models import Q
 import django
@@ -11,7 +12,7 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'budget.settings_dev'
 django.setup()
 
 import json
-from web.models import RecordGroup, Record, TransactionRuleSet, ProtoTransaction, TransactionRule
+from web.models import Record, TransactionRuleSet, ProtoTransaction, TransactionRule
 from web.util.modelutil import TransactionTypes
 import web.util.dates as utildates
 from datetime import datetime, timedelta
@@ -403,36 +404,38 @@ class RecordGrouper(object):
 
         return stats
 
-    @staticmethod
-    def get_record_group_stats(record_group_id, ignore_cache=False, dry_run=False):
+    # @staticmethod
+    # def get_record_group_stats(record_group_id, ignore_cache=False, dry_run=False):
 
 
-        recordgroup = RecordGroup.objects.get(pk=record_group_id)
-        stats = None 
+    #     recordgroup = RecordGroup.objects.get(pk=record_group_id)
+    #     stats = None 
 
-        # -- vvv Spaghetti logic to support non-destructive testing vvv
+    #     # -- vvv Spaghetti logic to support non-destructive testing vvv
 
-        # -- will always compute stats (when needed) during normal operation
-        # -- and can be forced to compute to test new code 
-        if not recordgroup.stats or ignore_cache:
-            records = Record.objects.filter(record_group=record_group_id)
-            stats = RecordGrouper.get_stats(records)
+    #     # -- will always compute stats (when needed) during normal operation
+    #     # -- and can be forced to compute to test new code 
+    #     if not recordgroup.stats or ignore_cache:
+    #         records = Record.objects.filter(record_group=record_group_id)
+    #         stats = RecordGrouper.get_stats(records)
         
-        # -- will always save stats if they've been computed during normal operation 
-        # -- and save can be skipped to test new code 
-        if not dry_run and stats:
-            recordgroup.stats = stats 
-            recordgroup.save()
+    #     # -- will always save stats if they've been computed during normal operation 
+    #     # -- and save can be skipped to test new code 
+    #     if not dry_run and stats:
+    #         recordgroup.stats = stats 
+    #         recordgroup.save()
 
-        # -- results of latest code always returns during testing 
-        # -- and when computed during normal operation 
-        # -- model field is there otherwise 
-        return stats or recordgroup.stats
+    #     # -- results of latest code always returns during testing 
+    #     # -- and when computed during normal operation 
+    #     # -- model field is there otherwise 
+    #     return stats or recordgroup.stats
     
     @staticmethod 
-    def get_record_rule_index():
-        '''Creates an index of all records => # of TransactionRuleSets it appears in'''
-        rule_sets = [ [ r.id for r in trs.records() ] for trs in TransactionRuleSet.objects.all() ]
+    def get_record_rule_index(refresh=False):
+        '''Creates an index of all records => # of TransactionRuleSets it appears in. Useful for weeding out records that have rule set
+        attachments and for a quick "rules matched" lookup.'''
+
+        rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in TransactionRuleSet.objects.all() ]
         record_ids = set([ i for s in rule_sets for i in s ])
         return { str(i): len([ s for s in rule_sets if i in s ]) for i in record_ids }
     
@@ -457,6 +460,8 @@ class RecordGrouper(object):
     def group_records(force_regroup_all=False):
         '''Create and assign RecordGroups for distinct record descriptions'''
         
+        # -- MANUAL rule sets
+
         manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False)
         for rule_set in manual_rule_sets:
             stats = RecordGrouper.get_stats(rule_set.records(refresh=True))
@@ -466,12 +471,14 @@ class RecordGrouper(object):
             else:
                 proto_transaction = ProtoTransaction.new_from(rule_set.name, stats, rule_set)
 
+        # -- AUTO rule sets 
+
         # -- by default this function will only process records without an assigned record group 
         if force_regroup_all:
             TransactionRuleSet.objects.filter(is_auto=True).delete()
         
         while True:
-                
+            
             records = Record.objects.filter(
                 ~Q(extra_fields__type="TRANSFER") \
                 & ~Q(extra_fields__type="ONLINE TRANSFER") \
@@ -483,14 +490,16 @@ class RecordGrouper(object):
             # total_amount = sum([ r.amount for r in records ])
 
             # -- filter out records which are accounted for already by rules/rulesets 
-            # TODO: unfortunately, auto-grouping attempts using these records may match records 
-            # already accounted for.. we can continue to limit these records below, but which 
+            # TODO: unfortunately, even though we remove records already accounted
+            # for in rule sets, this auto-grouping method may ultimately match those records 
+            # because we modify (shorten) the working description to find matches
+            # we can continue to limit these records below as they are found, but which 
             # grouping should "win" and own a record? arguably the user groups (manual) should have 
             # their own priority ranking and only allow any one record to be a part of one group
             # and any records left over can live in multiple auto groups? however if we want to eventually
             # elevate the auto groups and prototransactions to take part in forecasting/projection, a
             # single group-per-record must be held everywhere 
-            record_rule_index = RecordGrouper.get_record_rule_index()
+            record_rule_index = RecordGrouper.get_record_rule_index(refresh=True)
             records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
             # logger.warning(f'{len(records)} records')
 
@@ -548,10 +557,16 @@ class RecordGrouper(object):
                     TransactionRule.objects.create(transactionruleset=transaction_rule_set, **rule_attempt)
                     transaction_rule_set.refresh_from_db()
                     logger.warning("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
+                    
                     records = transaction_rule_set.records(refresh=True)
+
                     logger.warning(f'Attempting rule {rule_attempt} -> {len(records)} records')
                     logger.warning("\n".join([ str(r) for r in records ]))
 
+                    # record_rule_index = RecordGrouper.get_record_rule_index(refresh=True)                    
+                    # records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
+                    # logger.warning(f'Removed used records and now have {len(records)}')
+                    
                     try:
                         stats = RecordGrouper.get_stats(records)
 
@@ -574,6 +589,7 @@ class RecordGrouper(object):
                     except:
                         logger.error(sys.exc_info()[0])
                         logger.error(sys.exc_info()[1])
+                        traceback.print_tb(sys.exc_info()[2])
                         logger.error(f'The transactionruleset {transaction_rule_set.name} is cleared of rules.')
                         transaction_rule_set.transactionrules.all().delete()
 
@@ -646,14 +662,14 @@ class RecordGrouper(object):
             #         #     self.accounts_by_transaction_type[transaction_type] = []
             #         # self.accounts_by_transaction_type[transaction_type].append(account_entry)
             
-if __name__ == "__main__":
+# if __name__ == "__main__":
 
-    match = sys.argv[1]
+#     match = sys.argv[1]
 
-    # -- 27, 28, 33, 40
-    record_groups = RecordGroup.objects.all()
+#     # -- 27, 28, 33, 40
+#     record_groups = RecordGroup.objects.all()
 
-    for record_group in [ g for g in record_groups ]: # if g.id in [27, 28, 33, 40] ]:
-        stats = RecordGrouper.get_record_group_stats(record_group.id, ignore_cache=True, dry_run=True)
-        print(f'Record group: {record_group.name} ({record_group.id})')
-        print(json.dumps(stats, indent=4))
+#     for record_group in [ g for g in record_groups ]: # if g.id in [27, 28, 33, 40] ]:
+#         stats = RecordGrouper.get_record_group_stats(record_group.id, ignore_cache=True, dry_run=True)
+#         print(f'Record group: {record_group.name} ({record_group.id})')
+#         print(json.dumps(stats, indent=4))

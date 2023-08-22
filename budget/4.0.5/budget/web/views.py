@@ -14,12 +14,12 @@ from datetime import datetime, timedelta
 import logging
 import traceback
 from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, RecordForm, UploadedFileForm, AccountForm, TransactionForm, TransactionIntakeForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Vehicle, Property, Account, Record, RecordGroup, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, CreditCardExpense, ProtoTransaction
+from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Vehicle, Property, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, CreditCardExpense, ProtoTransaction
 from web.util.viewutil import get_records_for_filter, get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
-from web.util.viewutil import process_uploaded_file, save_processed_records
+from web.util.viewutil import process_uploaded_file, save_processed_records, ruleset_stats
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
 # from django.core import serializers
 
@@ -137,6 +137,8 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
         transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
 
     template_data = {
+        'auto_stats': ruleset_stats(transactionrulesets_auto),
+        'manual_stats': ruleset_stats(transactionrulesets_manual),
         'transactionrulesets_auto': sorted(transactionrulesets_auto, key=lambda t: len(t.records()), reverse=True),
         'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: len(t.records()), reverse=True),
         'message': message,
@@ -150,7 +152,13 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
 
 def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule=None):
 
-    TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=1)
+    TransactionRuleFormSet = modelformset_factory(
+        TransactionRule, 
+        form=TransactionRuleForm, 
+        formset=BaseTransactionRuleFormSet, 
+        fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), 
+        extra=1)
+
     transactionruleset = TransactionRuleSet()
     transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
     # transactionrule_formset.forms.append(TransactionRuleForm())
@@ -159,7 +167,14 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
     transactionrules = []
 
     if transactionruleset_id:
-        TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=0)
+
+        TransactionRuleFormSet = modelformset_factory(
+        TransactionRule, 
+        form=TransactionRuleForm, 
+        formset=BaseTransactionRuleFormSet, 
+        fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), 
+        extra=0)
+
         transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
         transactionrules = TransactionRule.objects.filter(transactionruleset_id=transactionruleset_id)
         transactionrule_formset = TransactionRuleFormSet(queryset=transactionrules)
@@ -171,7 +186,7 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
         'field_messages': {},
         'data': {
             'records': [],                 
-            'unaccounted_record_ids': ""                
+            # 'unaccounted_record_ids': ""                
         }
     }
     
@@ -228,18 +243,17 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                         'description': r.description, 
                         'amount': r.amount, 
                         'account': r.account.name if r.account else r.creditcard.name,              
-                        'extra_fields': r.extra_fields,              
-                        'transaction': str(r.transaction) if r.transaction else None 
+                        'extra_fields': r.extra_fields
                     } for r in record_queryset ]
                     
                     response['data']['records'] = record_data 
 
-                    unaccounted_record_ids = [ str(r['id']) for r in record_data if not r['transaction'] ]
-                    response['data']['unaccounted_record_ids'] = ",".join(unaccounted_record_ids)
+                    # unaccounted_record_ids = [ str(r['id']) for r in record_data if not r['transaction'] ]
+                    # response['data']['unaccounted_record_ids'] = ",".join(unaccounted_record_ids)
                     
                     recordstats = {
                         'total_record_count': len(record_data),
-                        'unaccounted_record_count': len(unaccounted_record_ids),
+                        # 'unaccounted_record_count': len(unaccounted_record_ids),
                         **get_records_template_data(record_queryset)
                     }
 
@@ -583,46 +597,46 @@ def transactions(request, tenant_id):
 
     return render(request, "transactions.html", template_data)
 
-def transaction_bulk(request, tenant_id):
+# def transaction_bulk(request, tenant_id):
 
-    TransactionIntakeFormSet = formset_factory(TransactionIntakeForm, can_delete=True, extra=0)
-    formset = TransactionIntakeFormSet()
-    formset_errors = []
-    formset_data = [ { 
-        'is_imported': True, 
-        'record_group_id': rg.id,
-        **RecordGrouper.get_record_group_stats(rg.id)        
-    } for rg in RecordGroup.objects.all() ]
+#     TransactionIntakeFormSet = formset_factory(TransactionIntakeForm, can_delete=True, extra=0)
+#     formset = TransactionIntakeFormSet()
+#     formset_errors = []
+#     formset_data = [ { 
+#         'is_imported': True, 
+#         'record_group_id': rg.id,
+#         **RecordGrouper.get_record_group_stats(rg.id)        
+#     } for rg in RecordGroup.objects.all() ]
 
-    if request.method == "POST":
+#     if request.method == "POST":
 
-        # total_forms_range = range(int(request.POST['form-INITIAL_FORMS']))
-        # form_fields = ['name', 'amount', 'transaction_type', 'is_imported', 'record_group_id']
+#         # total_forms_range = range(int(request.POST['form-INITIAL_FORMS']))
+#         # form_fields = ['name', 'amount', 'transaction_type', 'is_imported', 'record_group_id']
 
-        # stats_data = [ RecordGrouper.get_record_group_stats(request.POST[f'form-{i}-record_group_id']) for i in total_forms_range if f'form-{i}-record_group_id' in request.POST ]
-        # form_data = [ { k: request.POST[f'form-{i}-{k}'] for k in form_fields } for i in total_forms_range if f'form-{i}-{form_fields[0]}' in request.POST ]
-        # print(json.dumps(form_data[0], indent=4))
-        # formset_data = [ { **stats_data[index], **item } for index, item in enumerate(form_data) ]
-        # print(json.dumps(formset_data[0], indent=4))
+#         # stats_data = [ RecordGrouper.get_record_group_stats(request.POST[f'form-{i}-record_group_id']) for i in total_forms_range if f'form-{i}-record_group_id' in request.POST ]
+#         # form_data = [ { k: request.POST[f'form-{i}-{k}'] for k in form_fields } for i in total_forms_range if f'form-{i}-{form_fields[0]}' in request.POST ]
+#         # print(json.dumps(form_data[0], indent=4))
+#         # formset_data = [ { **stats_data[index], **item } for index, item in enumerate(form_data) ]
+#         # print(json.dumps(formset_data[0], indent=4))
 
-        formset = TransactionIntakeFormSet(request.POST, initial=formset_data)
-        print(f'validing {len(formset.forms)} forms in formset')
-        for form in formset.forms:
-            if form.is_valid():
-                logger.warning(f'Form is valid.. saving!')
-                logger.warning(form)
-                form.save()                
-            else:
-                # form_errors = [ e for e in form.errors ]
-                formset_errors.append(form.errors)
-                logger.warning(f'formset errors: {len(form.errors)}')
-                print(form.errors)
-                # print(form.non_form_errors())
-    else:
+#         formset = TransactionIntakeFormSet(request.POST, initial=formset_data)
+#         print(f'validing {len(formset.forms)} forms in formset')
+#         for form in formset.forms:
+#             if form.is_valid():
+#                 logger.warning(f'Form is valid.. saving!')
+#                 logger.warning(form)
+#                 form.save()                
+#             else:
+#                 # form_errors = [ e for e in form.errors ]
+#                 formset_errors.append(form.errors)
+#                 logger.warning(f'formset errors: {len(form.errors)}')
+#                 print(form.errors)
+#                 # print(form.non_form_errors())
+#     else:
         
-        formset = TransactionIntakeFormSet(initial=formset_data)
+#         formset = TransactionIntakeFormSet(initial=formset_data)
     
-    return render(request, "transaction_bulk.html", {'formset': formset, 'formset_errors': formset_errors})
+#     return render(request, "transaction_bulk.html", {'formset': formset, 'formset_errors': formset_errors})
 
 @require_http_methods(['POST'])
 def transaction_new(request, tenant_id, transaction_type=None):

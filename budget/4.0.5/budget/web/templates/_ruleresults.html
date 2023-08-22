@@ -4,18 +4,16 @@
     <table>
         <tr>
             <th>date</th>
-            <th>acct</th>
+            <th>acct/cc</th>
             <th>desc</th>
-            <th>amt</th>
-            <th>tx</th>
+            <th>amt</th>            
         </tr>
         {% for record in records %} 
             <tr title="{{ record.extra_fields }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
                 <td>{{ record.transaction_date }}</td>
                 <td>{{ record.account }}</td>
                 <td>{{ record.description }}</td>
-                <td>{{ record.amount }}</td>
-                <td>{% if record.transaction %}{{ record.transaction }}{% else %}no transaction{% endif %}</td>
+                <td>{{ record.amount }}</td>                
             </tr>
         {% endfor %}
     </table>    

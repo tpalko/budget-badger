@@ -10,37 +10,21 @@
 {% endif %}
 
 <div class="row">
-    <div class="col-9">
+    <div class="col-16">
         
         {% include "transactionruleset_edit.html" %}
         
-        <h3>Showing {{ transactionrulesets_auto|length }} rule sets</h3>
+        <h3>Showing {{ transactionrulesets_manual|length }} manual rule sets</h3>
 
-        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_manual %}
+        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_manual stats=manual_stats %}
 
-        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_auto %}
+        <h3>Showing {{ transactionrulesets_auto|length }} auto rule sets</h3>
+        <a class="button" href="{% url "regroup_records" tenant_id=1 %}">Regroup Records</a>        
+
+        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_auto stats=auto_stats %}
 
     </div>
-    <div class="col-7">
-        <a class="button" href="{% url "transaction_bulk" tenant_id=1 %}">Bulk Intake</a>
-        <a class="button" href="{% url "regroup_records" tenant_id=1 %}">Regroup Records</a>
-        {% if recordgroup_data.record_groups %}
-        <table class="clicky-table" id="record_group_table">
-            <tr class="row">
-                {% for column in recordgroup_data.record_group_columns|array_split:',' %}
-                    <th>{{ column }}</th>
-                {% endfor %}
-            </tr>
-            {% for record_group in recordgroup_data.record_groups %}
-            <tr id="recordgroup-{{ forloop.counter0 }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
-                {% for column in recordgroup_data.record_group_columns|array_split:',' %}
-                    <td data-clickyrow="recordgroup-{{ forloop.parentloop.counter0 }}">{{ record_group|lookup:column }}</td>
-                {% endfor %}                
-            </tr>
-            {% endfor %}
-        </table>
-        {% endif %}
-    </div>
+    
 </div>
 
 

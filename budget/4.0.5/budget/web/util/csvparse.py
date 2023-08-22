@@ -44,8 +44,8 @@ def get_records_from_csv(data, columns, header_included):
     logger.info(f'data has {len(lines)} lines, header included {header_included}')
 
     for partial in [ l for l in lines if l ]:
-        line = f'{line}{partial}'
-        
+
+        line = f'{line}{partial}'        
 
         try:
             commas = _findstarts(line, ',')

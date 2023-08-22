@@ -105,9 +105,12 @@ def records_from_rules(filters, join_operator):
     qs = None 
 
     if join_operator == TransactionRuleSet.JOIN_OPERATOR_AND:
+
         qs = Record.objects.all()
         for filter in filters:
-            qs = qs.filter(**filter).order_by('-transaction_date')
+            qs = qs.filter(**filter)
+        
+        qs = qs.order_by('-transaction_date')
         
     elif join_operator == TransactionRuleSet.JOIN_OPERATOR_OR:
         
@@ -426,18 +429,18 @@ class UploadedFile(BaseModel):
         elif self.creditcard:
             self.recordtype = self.creditcard.recordtype 
     
-class RecordGroup(BaseModel):
-    name = models.CharField(max_length=255)
-    stats = models.JSONField(null=True)
+# class RecordGroup(BaseModel):
+#     name = models.CharField(max_length=255)
+#     stats = models.JSONField(null=True)
     
 class Record(BaseModel):
 
-    record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
+    # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
     uploaded_file = models.ForeignKey(to=UploadedFile, related_name='records', on_delete=models.RESTRICT)    
     transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
     creditcardexpense = models.ForeignKey(to=CreditCardExpense, related_name='records', on_delete=models.SET_NULL, null=True)
     account = models.ForeignKey(to=Account, related_name='records', on_delete=models.RESTRICT, null=True)
-    creditcard = models.ForeignKey(to=CreditCard, related_name='records', on_delete=models.RESTRICT, null=True)
+    creditcard = models.ForeignKey(to=CreditCard, related_name='records', on_delete=models.RESTRICT, null=True)    
     transaction_date = models.DateField()
     post_date = models.DateField(null=True)
     description = models.CharField(max_length=255, blank=True, null=True)

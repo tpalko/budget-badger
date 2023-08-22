@@ -64,34 +64,15 @@ class TransactionRuleSetForm(ModelForm):
         i = kwargs['instance'] if 'instance' in kwargs else TransactionRuleSet()
 
         trs = TransactionRuleSet.objects.filter(is_auto=i.is_auto)
-        max = max([ rs.priority for rs in trs ]) + 1
+        max_priority = max([ rs.priority for rs in trs ]) + 1
 
         if 'instance' in kwargs:
-            kwargs['instance'].priority = kwargs['instance'].priority or 10
+            kwargs['instance'].priority = kwargs['instance'].priority or max_priority
         else:
-            kwargs['instance'] = TransactionRuleSet(priority=10)
+            kwargs['instance'] = TransactionRuleSet(priority=max_priority)
 
         super(TransactionRuleSetForm, self).__init__(*args, **kwargs)
 
-
-    def clean(self):        
-
-        super(TransactionRuleSetForm, self).clean()
-
-        # -- renumber transaction rule sets 
-        priority = self.cleaned_data['priority']
-        rs = TransactionRuleSet.objects.filter(is_auto=self.cleaned_data['is_auto']).order_by('priority')
-
-        found = False 
-
-        for ruleset in rs:
-            if rs.priority < priority:
-                continue 
-            if rs.priority >= priority:
-                rs.priority += 1
-                rs.save()
-
-    
 class RecordTypeForm(ModelForm):
 
     class Meta:
@@ -159,7 +140,7 @@ class UploadedFileForm(ModelForm):
         fields = ['upload', 'account', 'creditcard', 'original_filename', 'header_included']
     
     original_filename = CharField(widget=HiddenInput())
-    header_included = BooleanField()
+    header_included = BooleanField(initial=True)
 
     def __init__(self, *args, **kwargs):
         post_copy = None 
