@@ -13,7 +13,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 import logging
 import traceback
-from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, RecordForm, UploadedFileForm, AccountForm, TransactionForm, TransactionIntakeForm, CreditCardExpenseFormSet
+from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, UploadedFileForm, AccountForm, TransactionForm, CreditCardExpenseFormSet
 from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Vehicle, Property, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, CreditCardExpense, ProtoTransaction
 from web.util.viewutil import get_records_for_filter, get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
@@ -242,7 +242,7 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                         'transaction_date': r.transaction_date, 
                         'description': r.description, 
                         'amount': r.amount, 
-                        'account': r.account.name if r.account else r.creditcard.name,              
+                        'account': r.uploaded_file.account.name if r.uploaded_file.account else r.uploaded_file.creditcard.name,              
                         'extra_fields': r.extra_fields
                     } for r in record_queryset ]
                     
@@ -407,6 +407,8 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
 
 def records(request, tenant_id):
     
+    hide_accounted = True 
+
     record_rules = RecordGrouper.get_record_rule_index()
 
     record_sort = '-transaction_date'
@@ -414,8 +416,14 @@ def records(request, tenant_id):
     if request.method == "POST":
         record_sort = request.POST['record_sort'] if 'record_sort' in request.POST else '-date' 
 
-    records_by_account = [ { 'obj': a, 'records': Record.objects.filter(account=a).order_by('-post_date') } for a in Account.objects.all() ]
-    records_by_creditcard = [ {'obj': c, 'records': Record.objects.filter(creditcard=c).order_by('-post_date') } for c in CreditCard.objects.all() ]
+    records_by_account = [ { 'obj': a, 'records': Record.objects.filter(uploaded_file__account=a).order_by('-post_date') } for a in Account.objects.all() ]
+    records_by_creditcard = [ {'obj': c, 'records': Record.objects.filter(uploaded_file__creditcard=c).order_by('-post_date') } for c in CreditCard.objects.all() ]
+
+    if hide_accounted:
+        for a in records_by_account:
+            a['records'] = [ r for r in a['records'] if str(r.id) not in record_rules ]
+        for c in records_by_creditcard:
+            c['records'] = [ r for r in c['records'] if str(r.id) not in record_rules ]
 
     show_record_columns = ['id', 'transaction_date', 'description', 'amount', 'extra_fields', 'type']
 
@@ -674,8 +682,8 @@ def transaction_new(request, tenant_id, transaction_type=None):
                 'amount': f'{record_stats["recurring_amount"]:.2f}',
                 'cycle_due_date': record_stats['most_frequent_date'],
                 'started_at': record_stats['started_at'],
-                'is_imported': True,
-                'record_ids': record_id_post
+                'is_imported': True
+                # 'record_ids': record_id_post
             }
     
     initial_data['transaction_type'] = transaction_type 
@@ -689,9 +697,9 @@ def transaction_new(request, tenant_id, transaction_type=None):
     
             transaction = transaction_form.save()
         
-            for record in records:
-                record.transaction = transaction
-                record.save()
+            # for record in records:
+            #     record.transaction = transaction
+            #     record.save()
 
             return redirect('transactions', tenant_id=tenant_id)             
     

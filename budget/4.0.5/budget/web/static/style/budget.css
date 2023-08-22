@@ -123,12 +123,20 @@ table tr th{
 
 table tr.even {
     background-color: #66cc66;
-    color: black;
+    color: #000;
 }
 
 table tr.odd {
     background-color: #99ff99;
-    color: black;
+    color: #000;
+}
+
+table.records-table tr{
+	color: #666;
+}
+
+table.records-table tr.accounted {
+	color: #000;
 }
 
 table tr:hover {
@@ -138,6 +146,8 @@ table tr:hover {
 table tr.selected {
     background-color: #00ff00;
 }
+
+
 
 table tr td {
     padding: .5em;

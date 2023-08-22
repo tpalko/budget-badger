@@ -376,8 +376,8 @@ class RecordGrouper(object):
         description_set = list(set(descriptions))
         stats['description'] = description_set[np.array([ descriptions.count(d) for d in description_set ]).argmax()]
         
-        stats['accounts'] = list(set([ str(r.account) for r in records if r.account ]))
-        stats['creditcards'] = list(set([ str(r.creditcard) for r in records if r.creditcard ]))
+        stats['accounts'] = list(set([ str(r.uploaded_file.account) for r in records if r.uploaded_file.account ]))
+        stats['creditcards'] = list(set([ str(r.uploaded_file.creditcard) for r in records if r.uploaded_file.creditcard ]))
 
         # ['name', 'amount', 'transaction_type', 'is_active', 'is_imported', 'period', 'started_at', 'cycle_due_date', 'is_variable'
         '''
@@ -431,11 +431,11 @@ class RecordGrouper(object):
     #     return stats or recordgroup.stats
     
     @staticmethod 
-    def get_record_rule_index(refresh=False):
+    def get_record_rule_index(less_than_priority=1, refresh=False):
         '''Creates an index of all records => # of TransactionRuleSets it appears in. Useful for weeding out records that have rule set
         attachments and for a quick "rules matched" lookup.'''
 
-        rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in TransactionRuleSet.objects.all() ]
+        rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in TransactionRuleSet.objects.filter(priority__lt=less_than_priority) ]
         record_ids = set([ i for s in rule_sets for i in s ])
         return { str(i): len([ s for s in rule_sets if i in s ]) for i in record_ids }
     
@@ -464,7 +464,10 @@ class RecordGrouper(object):
 
         manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False)
         for rule_set in manual_rule_sets:
-            stats = RecordGrouper.get_stats(rule_set.records(refresh=True))
+            records = rule_set.records(refresh=True)
+            record_rule_index = RecordGrouper.get_record_rule_index(less_than_priority=rule_set.priority, refresh=True)
+            records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
+            stats = RecordGrouper.get_stats(records)
             if rule_set.prototransaction:
                 rule_set.prototransaction.update_stats(stats)
                 rule_set.prototransaction.save()
@@ -477,7 +480,7 @@ class RecordGrouper(object):
         if force_regroup_all:
             TransactionRuleSet.objects.filter(is_auto=True).delete()
         
-        while True:
+        while False:
             
             records = Record.objects.filter(
                 ~Q(extra_fields__type="TRANSFER") \

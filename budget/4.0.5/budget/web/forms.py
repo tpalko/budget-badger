@@ -91,15 +91,15 @@ class RecordForm(ModelForm):
 
     class Meta:
         model = Record 
-        fields = ['transaction_date', 'post_date', 'description', 'amount', 'extra_fields', 'uploaded_file', 'account', 'creditcard'] #'account_type', 'type', 'ref', 'credits', 'debits', ]
+        fields = ['transaction_date', 'post_date', 'description', 'amount', 'extra_fields', 'uploaded_file'] #, 'account', 'creditcard'] #'account_type', 'type', 'ref', 'credits', 'debits', ]
 
-    account = ModelChoiceField(queryset=Account.objects.all(), required=False)
-    creditcard = ModelChoiceField(queryset=CreditCard.objects.all(), required=False)
+    # account = ModelChoiceField(queryset=Account.objects.all(), required=False)
+    # creditcard = ModelChoiceField(queryset=CreditCard.objects.all(), required=False)
 
     def __init__(self, *args, **kwargs):
         
         super(RecordForm, self).__init__(*args, **kwargs)
-        exclude_extras = ['uploaded_file', 'account', 'creditcard']        
+        exclude_extras = ['uploaded_file'] #, 'account', 'creditcard']        
 
         extra_fields = { k: args[0][k] for k in args[0] if k not in self.fields.keys() and k not in exclude_extras }
         if 'extra_fields' not in args:
@@ -181,7 +181,7 @@ class TransactionForm(ModelForm):
     # transaction_type = ChoiceField(choices=Transaction.type_choices)
     id = CharField(widget=HiddenInput(), required=False)
     is_imported = CharField(widget=HiddenInput())
-    record_ids = CharField(widget=HiddenInput(), required=False)
+    # record_ids = CharField(widget=HiddenInput(), required=False)
     tax_category = ChoiceField(choices=TransactionTypes.tax_category_choices, required=False)
     property = ModelChoiceField(queryset=Property.objects.all(), required=False)
 
@@ -212,40 +212,40 @@ class TransactionForm(ModelForm):
             # else:
             #     logger.warning(f'Amount sign {amount_sign} appears to be appropriate for transaction type {transaction_type}')
 
-class TransactionIntakeForm(TransactionForm):
+# class TransactionIntakeForm(TransactionForm):
     
-    class Meta:
-        model = Transaction
-        fields = ['id', 'name', 'amount', 'account', 'transaction_type']
+#     class Meta:
+#         model = Transaction
+#         fields = ['id', 'name', 'amount', 'account', 'transaction_type']
 
-    # frequency = ChoiceField(choices=RecurringTransaction.period_choices)
-    # transaction_type = ChoiceField(choices=Transaction.type_choices)
+#     # frequency = ChoiceField(choices=RecurringTransaction.period_choices)
+#     # transaction_type = ChoiceField(choices=Transaction.type_choices)
 
-    stats = {}
-    record_group_id = CharField(widget=HiddenInput())
-    is_imported = CharField(widget=HiddenInput())
+#     stats = {}
+#     record_group_id = CharField(widget=HiddenInput())
+#     is_imported = CharField(widget=HiddenInput())
     
-    def save(self):
-        transaction_type = self['transaction_type'].value()
-        logger.warning(f'Loading typed form for {transaction_type}')
-        logger.warning(dir(self))        
-        logger.warning(self.cleaned_data)
-        logger.warning(self.data)
-        logger.warning(self.fields)
-        logger.warning(self.initial)
-        logger.warning(self.instance)
-        typed_form = form_types[transaction_type]({ **self.cleaned_data, 'period': utildates.PERIOD_MONTHLY})
-        if typed_form.is_valid():
-            logger.warning(f'Form is valid!')
-            # super(TransactionIntakeForm, self).save()
-            typed_form.save()
-        else:
-            logger.warning(f'Form is NOT valid')
-            logger.warning(dir(typed_form))
-            logger.warning(f'typed form errors: {len(typed_form.errors)}')
-            logger.warning(typed_form.errors)
-            logger.warning(f'typed form non-field errors:')
-            logger.warning(typed_form.non_field_errors())
+#     def save(self):
+#         transaction_type = self['transaction_type'].value()
+#         logger.warning(f'Loading typed form for {transaction_type}')
+#         logger.warning(dir(self))        
+#         logger.warning(self.cleaned_data)
+#         logger.warning(self.data)
+#         logger.warning(self.fields)
+#         logger.warning(self.initial)
+#         logger.warning(self.instance)
+#         typed_form = form_types[transaction_type]({ **self.cleaned_data, 'period': utildates.PERIOD_MONTHLY})
+#         if typed_form.is_valid():
+#             logger.warning(f'Form is valid!')
+#             # super(TransactionIntakeForm, self).save()
+#             typed_form.save()
+#         else:
+#             logger.warning(f'Form is NOT valid')
+#             logger.warning(dir(typed_form))
+#             logger.warning(f'typed form errors: {len(typed_form.errors)}')
+#             logger.warning(typed_form.errors)
+#             logger.warning(f'typed form non-field errors:')
+#             logger.warning(typed_form.non_field_errors())
 
 class SingleTransactionForm(TransactionForm):
 

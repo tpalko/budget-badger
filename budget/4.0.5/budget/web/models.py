@@ -191,7 +191,7 @@ class ProtoTransaction(BaseModel):
     name = models.CharField(max_length=200, unique=True)
     amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
     period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
-    account = models.ForeignKey(to=Account, related_name='prototransactions', on_delete=models.SET_NULL, null=True)    
+    # account = models.ForeignKey(to=Account, related_name='prototransactions', on_delete=models.SET_NULL, null=True)    
     stats = models.JSONField(null=True)
     property = models.ForeignKey(to=Property, related_name='prototransactions', on_delete=models.SET_NULL, null=True)
     tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
@@ -313,6 +313,9 @@ class UtilityTransaction(RecurringTransaction):
     pass 
 
 class CreditCardTransaction(RecurringTransaction):
+    '''The analogue of RecurringTransaction as spending pertains to a credit card instead of a checking or savings account.
+    The base type is Transaction, tied to Account which feeds the actual expense (paying off the credit card) while this 
+    derivative type establishes the relationship with the specific credit card.'''
 
     creditcard = models.ForeignKey(CreditCard, related_name='creditcardtransactions', on_delete=models.RESTRICT, null=True)    
     cycle_billing_date = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)], default=1, blank=True, null=True)
@@ -434,13 +437,12 @@ class UploadedFile(BaseModel):
 #     stats = models.JSONField(null=True)
     
 class Record(BaseModel):
+    '''A normalized representation of a single historical transaction'''
 
     # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
     uploaded_file = models.ForeignKey(to=UploadedFile, related_name='records', on_delete=models.RESTRICT)    
-    transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
-    creditcardexpense = models.ForeignKey(to=CreditCardExpense, related_name='records', on_delete=models.SET_NULL, null=True)
-    account = models.ForeignKey(to=Account, related_name='records', on_delete=models.RESTRICT, null=True)
-    creditcard = models.ForeignKey(to=CreditCard, related_name='records', on_delete=models.RESTRICT, null=True)    
+    # transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
+    creditcardexpense = models.ForeignKey(to=CreditCardExpense, related_name='records', on_delete=models.SET_NULL, null=True)    
     transaction_date = models.DateField()
     post_date = models.DateField(null=True)
     description = models.CharField(max_length=255, blank=True, null=True)
@@ -454,7 +456,7 @@ class Record(BaseModel):
         #     self.account = self.uploaded_file.account
 
     def __str__(self):
-        return f'{self.id}, {self.account or self.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
+        return f'{self.id}, {self.uploaded_file.account or self.uploaded_file.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
 
     # def save(self, *args, **kwargs):        
     #     self.clean()

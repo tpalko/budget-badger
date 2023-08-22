@@ -243,8 +243,8 @@ def save_processed_records(records, uploadedfile):
             record_data = { 
                 **record, 
                 'uploaded_file': uploadedfile,
-                'account': uploadedfile.account,
-                'creditcard': uploadedfile.creditcard,
+                # 'account': uploadedfile.account,
+                # 'creditcard': uploadedfile.creditcard,
                 'description': record['description'] or ''
             }
             logger.warning(json.dumps({ k: str(v) for k,v in record_data.items() }, indent=4))
