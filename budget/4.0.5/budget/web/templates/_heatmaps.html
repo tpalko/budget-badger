@@ -2,7 +2,7 @@
 
 <div class="row">
     <div class="col-16">
-        <h2>Month Heatmap</h2>
+        <h3>Month Heatmap</h3>
         <table class="heatmap_table">
             <tr>
                 {% for day in 31|genrange %}
@@ -19,7 +19,7 @@
 </div>
 <div class="row">
     <div class="col-16">
-        <h2>Week Heatmap</h2>
+        <h3>Week Heatmap</h3>
         <table class="heatmap_table">
             <tr>
             {% for weekday in heatmap_data.all_weekdays %}

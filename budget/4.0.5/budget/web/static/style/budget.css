@@ -38,6 +38,7 @@ body.dark {
 	height: 77px;
 	top: 0px;	
 	padding: 15px;
+	z-index: 99;
 }
 
 .header h1 {

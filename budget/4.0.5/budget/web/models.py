@@ -148,21 +148,27 @@ class TransactionRuleSet(BaseModel):
 class TransactionRule(BaseModel):
     '''A building block for TransactionRuleSet'''
 
+    INCLUSION_FILTER = 'filter'
+    INCLUSION_EXCLUDE = 'exclude'
+
     MATCH_OPERATOR_LT_HUMAN = '<'
     MATCH_OPERATOR_EQUALS_HUMAN = '='
     MATCH_OPERATOR_GT_HUMAN = '>'
     MATCH_OPERATOR_CONTAINS_HUMAN = 'contains'
+    MATCH_OPERATOR_REGEX_HUMAN = 'regex'
 
     MATCH_OPERATOR_LT_DJANGO = '__lt'
     MATCH_OPERATOR_EQUALS_DJANGO = ''
     MATCH_OPERATOR_GT_DJANGO = '__gt'
     MATCH_OPERATOR_CONTAINS_DJANGO = '__icontains'
+    MATCH_OPERATOR_REGEX_DJANGO = '__regex'
 
     match_operator_lookup = {
         MATCH_OPERATOR_LT_HUMAN: MATCH_OPERATOR_LT_DJANGO,
         MATCH_OPERATOR_EQUALS_HUMAN: MATCH_OPERATOR_EQUALS_DJANGO,
         MATCH_OPERATOR_GT_HUMAN: MATCH_OPERATOR_GT_DJANGO,
-        MATCH_OPERATOR_CONTAINS_HUMAN: MATCH_OPERATOR_CONTAINS_DJANGO
+        MATCH_OPERATOR_CONTAINS_HUMAN: MATCH_OPERATOR_CONTAINS_DJANGO,
+        MATCH_OPERATOR_REGEX_HUMAN: MATCH_OPERATOR_REGEX_DJANGO
     }
 
     match_operator_choices = (
@@ -170,9 +176,11 @@ class TransactionRule(BaseModel):
         (MATCH_OPERATOR_EQUALS_HUMAN, MATCH_OPERATOR_EQUALS_HUMAN),
         (MATCH_OPERATOR_LT_HUMAN, MATCH_OPERATOR_LT_HUMAN),
         (MATCH_OPERATOR_CONTAINS_HUMAN, MATCH_OPERATOR_CONTAINS_HUMAN),
+        (MATCH_OPERATOR_REGEX_HUMAN, MATCH_OPERATOR_REGEX_HUMAN)
     )
 
     transactionruleset = models.ForeignKey(TransactionRuleSet, related_name='transactionrules', on_delete=models.CASCADE)
+    inclusion = models.CharField(null=False, choices=choiceify([INCLUSION_EXCLUDE, INCLUSION_FILTER]), default=INCLUSION_FILTER, max_length=10)
     record_field = models.CharField(max_length=50, null=True)
     match_operator = models.CharField(max_length=20, null=True, choices=match_operator_choices)
     match_value = models.CharField(max_length=100, null=True)    

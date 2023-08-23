@@ -1,64 +1,82 @@
 {% load budget_tags %}
 
-<div id="transactionruleset_form">
+<div class="row">
+    <div class="col-16">
+        <h3>{% if transactionruleset_form.id.value %}Edit{% else %}New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h3>
+        <div id="errors"></div>
+    </div>
+</div>
+<div class="row">
+    <div class="col-9">
+        {% if transactionruleset_form.id.value %} 
+            <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">
+        {% else %}
+            <form id="ruleform" method="POST" action="{% url "transactionruleset_create" tenant_id=1 %}">
+        {% endif %}
 
-    <h3>{% if transactionruleset_form.id.value %}Edit{% else %}New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h3>
+            {% csrf_token %}
 
-    <div id="errors"></div>
-
-    {% if transactionruleset_form.id.value %} 
-        <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">
-    {% else %}
-        <form id="ruleform" method="POST" action="{% url "transactionruleset_create" tenant_id=1 %}">
-    {% endif %}
-
-        {% csrf_token %}
-
-        <div>
-            {{ transactionruleset_form.errors }}
-            {% for bound_field in transactionruleset_form %} 
-                <div>
-                    {% if not bound_field.is_hidden %} 
-                        {{ bound_field.label_tag }}
-                    {% endif %}
-                    {% if bound_field.name == "name" %} 
-                        {{ bound_field|tabindex:1 }}
-                    {% else %}
-                        {{ bound_field|tabindex:2 }}
-                    {% endif %}
-                </div>
-            {% endfor %}        
-        </div>
-        <div>
-            {{ transactionrule_formset.management_form }}
-            <div id="forms">
-                {% for error in transactionrule_formset.errors %} 
-                    {{ error }}
-                {% endfor %}
-                {{ transactionrule_formset.non_form_errors }}
-                {% for form in transactionrule_formset %}
-                    <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
-                        <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>
-                    </div>            
-                {% endfor %}
+            <div>
+                {{ transactionruleset_form.errors }}
+                {% for bound_field in transactionruleset_form %} 
+                    <div>
+                        {% if not bound_field.is_hidden %} 
+                            {{ bound_field.label_tag }}
+                        {% endif %}
+                        {% if bound_field.name == "name" %} 
+                            {{ bound_field|tabindex:1 }}
+                        {% else %}
+                            {{ bound_field|tabindex:2 }}
+                        {% endif %}
+                    </div>
+                {% endfor %}        
             </div>
-            <a id="another_form" href="#">+</a>            
+            <div>
+                {{ transactionrule_formset.management_form }}
+                <div id="forms">
+                    {% for error in transactionrule_formset.errors %} 
+                        {{ error }}
+                    {% endfor %}
+                    {{ transactionrule_formset.non_form_errors }}
+                    {% for form in transactionrule_formset %}
+                        <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
+                            <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>
+                        </div>            
+                    {% endfor %}
+                </div>
+                <a id="another_form" href="#">+</a>            
+            </div>
+
+            <!-- <input type="hidden" name="unaccounted_record_ids" value="" /> -->
+            <input type="hidden" name="submit_event_type" value="" />
+
+            <input type="submit" name="save" value="save" />
+            <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
+        </form>
+        
+    </div>
+    <div class="col-7">
+        <div id="heatmaps"></div>
+    </div>
+</div>
+
+<div id="edit_stats" style="display: none">
+    <div class="row">
+        <div class="col-7">
+            <h3>Stats</h3>
+            <div id="recordstats"></div>
         </div>
-
-        <!-- <input type="hidden" name="unaccounted_record_ids" value="" /> -->
-        <input type="hidden" name="submit_event_type" value="" />
-
-        <input type="submit" name="save" value="save" />
-        <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
-    </form>
-
+    </div>
     <div class="row">    
-        <div class="col-12">
-            <div id="recordstats"></div>        
-            <div id="ruleresults"></div>
+        <div class="col-7">
+            <h3>Aggregate</h3>
+            <div id="aggregate"></div>            
         </div>
-        <div class="col-4">
-            <div id="heatmaps"></div>        
+        <div class="col-7 col-offset-1">
+            <h3>Matched Rules</h3>
+            <div style="max-height: 500px;overflow-y:scroll;">
+                <div id="ruleresults"></div>        
+            </div>
         </div>
     </div>
 </div>
@@ -138,7 +156,9 @@
         if (true) {
             // form.unaccounted_record_ids.value = data.data.unaccounted_record_ids;
             
+            document.querySelector("#edit_stats").style.display = "block";
             document.querySelector("#recordstats").innerHTML = data.data.recordstats;
+            document.querySelector("#aggregate").innerHTML = data.data.aggregate;
             document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;
             document.querySelector("#ruleresults").innerHTML = data.data.ruleresults;
 

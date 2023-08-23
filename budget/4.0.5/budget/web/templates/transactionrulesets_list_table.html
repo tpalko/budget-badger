@@ -8,21 +8,19 @@
     </div>
     
     <div class="col-16">
-        <table style="width: 100%">
+        <table>
             <tr>
                 <th></th>
                 <th>Priority</th>
                 <th>Ruleset</th>        
                 <th>Rules</th>
                 <th># Records</th>
-                <th>xAcct</th>
-                <th>Tx Type</th>
-                <th>$/month</th>
-                <th>Period</th>
+                <th>xAcct</th>                
+                <th>$/month</th>                
             </tr>
         {% for transactionruleset in table %}
             <tr title="{% if transactionruleset.prototransaction %}{{ transactionruleset.prototransaction.stats }}{% endif %}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
-                <td nowrap>
+                <td>
                     <a href="{%  url "transactionrulesets_list" tenant_id=1 transactionruleset_id=transactionruleset.id %}">edit</a>
                     {% if not transactionruleset.is_auto %}
                     <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}" class="delete">delete</a>
@@ -33,16 +31,14 @@
                 <td nowrap>
                     {% for transactionrule in transactionruleset.transactionrules.all %}
                     <div>
-                        #{{ forloop.counter }}. {% if forloop.counter0 > 0 %}{{ transactionruleset.join_operator }}{% endif %}{{ transactionrule.record_field }} {{ transactionrule.match_operator }} {{ transactionrule.match_value}}
+                        #{{ forloop.counter }}. {% if forloop.counter0 > 0 %}{{ transactionruleset.join_operator }} {% endif %}{{ transactionrule.record_field }} {{ transactionrule.match_operator }} {{ transactionrule.match_value}}
                     </div>
                     {% endfor %}
                 </td>
                 <td nowrap>{{ transactionruleset.records|length }}</td>
                 {% if transactionruleset.prototransaction %}
-                    <td nowrap>{{ transactionruleset.prototransaction.cross_account }}</td>
-                    <td nowrap>{{ transactionruleset.prototransaction.transaction_type }}</td>
-                    <td nowrap>{{ transactionruleset.prototransaction.stats.monthly_amount|format_currency }}</td>
-                    <td nowrap>{{ transactionruleset.prototransaction.period }}</td>            
+                    <td nowrap>{{ transactionruleset.prototransaction.cross_account }}</td>                    
+                    <td nowrap>{{ transactionruleset.prototransaction.stats.monthly_amount|format_currency }}</td>                    
                 {% else %}
                     <td nowrap>-</td>
                     <td nowrap>-</td>

@@ -1,21 +1,17 @@
-from django.db.models import Q
 from django.shortcuts import render, redirect
 from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_http_methods
 from django.template.loader import render_to_string
 from django.http import JsonResponse
-from django.forms import formset_factory, modelformset_factory
+from django.forms import modelformset_factory
 
-import json 
 import sys
-import math
-from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import datetime
 import logging
 import traceback
-from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, UploadedFileForm, AccountForm, TransactionForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Vehicle, Property, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, CreditCardExpense, ProtoTransaction
-from web.util.viewutil import get_records_for_filter, get_heatmap_data, get_records_template_data, transaction_type_display
+from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
+from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
+from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
@@ -139,8 +135,8 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     template_data = {
         'auto_stats': ruleset_stats(transactionrulesets_auto),
         'manual_stats': ruleset_stats(transactionrulesets_manual),
-        'transactionrulesets_auto': sorted(transactionrulesets_auto, key=lambda t: len(t.records()), reverse=True),
-        'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: len(t.records()), reverse=True),
+        'transactionrulesets_auto': sorted(transactionrulesets_auto, key=lambda t: t.prototransaction.stats['monthly_amount'], reverse=True),
+        'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: t.priority, reverse=False),
         'message': message,
         'transactionruleset_form': transactionruleset_form,
         'recordfields': [ f.name for f in Record._meta.fields ],
@@ -258,6 +254,7 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     }
 
                     response['data']['recordstats'] = render_to_string("_recordstats.html", context=recordstats)
+                    response['data']['aggregate'] = render_to_string("_ruleset_aggregate.html", context=recordstats)
                     response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(record_queryset) })
                     response['data']['ruleresults'] = render_to_string("_ruleresults.html", context={ 'records': record_data })                    
 
@@ -407,8 +404,13 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
 
 def records(request, tenant_id):
     
-    hide_accounted = True 
-
+    hide_accounted = False 
+    full_path = request.get_full_path()
+    if '?' in full_path:
+        querystring = { e.split('=')[0]: e.split('=')[1] for e in full_path.split('?')[1].split('&') }
+        if 'hide_accounted' in querystring:
+            hide_accounted = str(querystring['hide_accounted']) == "1"
+    
     record_rules = RecordGrouper.get_record_rule_index()
 
     record_sort = '-transaction_date'
@@ -428,6 +430,7 @@ def records(request, tenant_id):
     show_record_columns = ['id', 'transaction_date', 'description', 'amount', 'extra_fields', 'type']
 
     template_data = {
+        'hide_accounted': hide_accounted,
         'record_rules': record_rules,
         'records_by_account': records_by_account,
         'records_by_creditcard': records_by_creditcard,

@@ -115,7 +115,7 @@ class RecordGrouper(object):
     @staticmethod 
     def _get_recency_weights(time_sorted_records):
         now = datetime.now()
-        relevance_timer = timedelta(days=365).total_seconds()
+        relevance_timer = timedelta(days=1000).total_seconds()
         # -- build list of weights corresponding to records, from 1 (now) to zero (relevance_timer ago)
         weights = [ (relevance_timer - (now.date() - r.transaction_date).total_seconds()) / relevance_timer for r in time_sorted_records ]
         # -- no negatives
@@ -253,7 +253,7 @@ class RecordGrouper(object):
 
         monthly_spend = total_amount 
 
-        if len(recent_records) > 1:
+        if len(recent_records) > 1 and of_month > 1:
             monthly_spend = total_amount / of_month
 
         logger.info(f'total: {total_amount} over {range_seconds} seconds')
@@ -431,11 +431,17 @@ class RecordGrouper(object):
     #     return stats or recordgroup.stats
     
     @staticmethod 
-    def get_record_rule_index(less_than_priority=1, refresh=False):
+    def get_record_rule_index(less_than_priority=None, is_auto=None, refresh=False):
         '''Creates an index of all records => # of TransactionRuleSets it appears in. Useful for weeding out records that have rule set
         attachments and for a quick "rules matched" lookup.'''
 
-        rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in TransactionRuleSet.objects.filter(priority__lt=less_than_priority) ]
+        tx_rule_sets = TransactionRuleSet.objects.all()
+        if less_than_priority:
+            tx_rule_sets = tx_rule_sets.filter(priority__lt=less_than_priority)
+        if is_auto is not None:
+            tx_rule_sets = tx_rule_sets.filter(is_auto=is_auto)
+
+        rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets ]
         record_ids = set([ i for s in rule_sets for i in s ])
         return { str(i): len([ s for s in rule_sets if i in s ]) for i in record_ids }
     
@@ -462,10 +468,11 @@ class RecordGrouper(object):
         
         # -- MANUAL rule sets
 
-        manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False)
+        manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False).order_by('priority')
         for rule_set in manual_rule_sets:
+            logger.debug(f'recalculating stats for manual rule set {rule_set.name}')
             records = rule_set.records(refresh=True)
-            record_rule_index = RecordGrouper.get_record_rule_index(less_than_priority=rule_set.priority, refresh=True)
+            record_rule_index = RecordGrouper.get_record_rule_index(less_than_priority=rule_set.priority, is_auto=False, refresh=True)
             records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
             stats = RecordGrouper.get_stats(records)
             if rule_set.prototransaction:
@@ -480,14 +487,17 @@ class RecordGrouper(object):
         if force_regroup_all:
             TransactionRuleSet.objects.filter(is_auto=True).delete()
         
-        while False:
+        while True:
             
-            records = Record.objects.filter(
-                ~Q(extra_fields__type="TRANSFER") \
-                & ~Q(extra_fields__type="ONLINE TRANSFER") \
-                & ~Q(extra_fields__type="ONLINE BANKING TRANSFER") \
-                & ~Q(extra_fields__type="CHECK") \
-            )
+            records = Record.objects.all()
+            
+            if False:
+                records = records.filter(
+                    ~Q(extra_fields__type="TRANSFER") \
+                    & ~Q(extra_fields__type="ONLINE TRANSFER") \
+                    & ~Q(extra_fields__type="ONLINE BANKING TRANSFER") \
+                    & ~Q(extra_fields__type="CHECK") \
+                )
 
             # logger.warning(f'{len(records)} records')
             # total_amount = sum([ r.amount for r in records ])
@@ -578,7 +588,7 @@ class RecordGrouper(object):
                         required_fields = ['timing_is_active', 'amount_is_active', 'amount', 'transaction_type', 'period', 'record_count']
                         for f in required_fields:
                             if not stats[f]:
-                                raise ValueError(f'The stats calculated are insufficient. Reason: missing, false or zero {f}.')
+                                raise ValueError(f'The stats calculated are insufficient. Reason: {f} = {stats[f]}.')
                         
                         proto_transaction = ProtoTransaction.new_from_rule_attempt(rule_attempt, stats, transaction_rule_set)
                         

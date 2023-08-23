@@ -7,7 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from web.models import BaseModel, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
 import logging 
 import web.util.dates as utildates
-from web.util.modelutil import TransactionTypes
+from web.util.modelutil import TransactionTypes, choiceify
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,10 @@ class TransactionRuleForm(ModelForm):
 
     class Meta:
         model = TransactionRule 
-        fields = ('id', 'record_field', 'match_operator', 'match_value', 'transactionruleset')
+        fields = ('id', 'inclusion', 'record_field', 'match_operator', 'match_value', 'transactionruleset')
     
     id = CharField(widget=HiddenInput(), required=False)
+    inclusion = ChoiceField(choices=choiceify([TransactionRule.INCLUSION_FILTER, TransactionRule.INCLUSION_EXCLUDE]))
     record_field = ChoiceField(choices=[ (r.name, r.name,) for r in Record._meta.fields ])
     match_operator = ChoiceField(choices=TransactionRule.match_operator_choices)
     transactionruleset = ModelChoiceField(widget=HiddenInput(), queryset=TransactionRuleSet.objects.all())
@@ -42,7 +43,7 @@ class TransactionRuleForm(ModelForm):
             exclude.append('transactionruleset')
 
         for field in [ f for f in self.fields if f not in exclude ]:
-            logger.warning(f'checking {field} in {self.cleaned_data} not if {exclude}')
+            # logger.warning(f'checking {field} in {self.cleaned_data} not if {exclude}')
             if field not in self.cleaned_data:
                 raise ValidationError({field: _('All fields are required')})
         
