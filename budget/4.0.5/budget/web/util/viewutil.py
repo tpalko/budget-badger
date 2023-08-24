@@ -106,7 +106,7 @@ def get_heatmap_data(filtered_records):
 #     }
 
 def ruleset_stats(rulesets):
-
+    
     total_amount = sum([ transactionruleset.prototransaction.stats['monthly_amount'] for transactionruleset in rulesets ])
     total_records = sum([ len(transactionruleset.records()) for transactionruleset in rulesets ])
 
@@ -162,9 +162,25 @@ def get_records_template_data(filtered_records):
     return template_data
 
 def _floatify(val):
-    return float(val.replace('$', '').replace(',', '').replace('"', '') or 0.00)
+    return float(str(val).replace('$', '').replace(',', '').replace('"', '') or 0.00)
 
-def _process_records(records, csv_date_format):
+def _must_amount(record, flow_convention):
+
+    # -- all record types so far have either amount or gross - OR - debit+credit
+    flow_based_fields = ['amount', 'gross']
+    explicit_fields = ['debit', 'credit']
+    
+    amount = _floatify(0)
+
+    for f in flow_based_fields + explicit_fields:
+        if f in record:
+            amount = _floatify(record[f])
+            if amount:
+                break 
+    
+    return amount
+
+def _process_records(records, csv_date_format, flow_convention):
     '''Field conversions, formatting (and potentially additions)'''
 
     # -- expand and amend particular fields 
@@ -177,7 +193,7 @@ def _process_records(records, csv_date_format):
         'description': record['description'].replace('\t', '') if 'description' in record else record['name'].replace('\t', ''),
         'transaction_date': datetime.strptime(record['transaction_date'], csv_date_format) if 'transaction_date' in record else datetime.strptime(record['date'], csv_date_format),
         'post_date': datetime.strptime(record['post_date'] if 'post_date' in record else record['date'] if 'date' in record else record['posting_date'], csv_date_format),
-        'amount': _floatify(record['amount'] if 'amount' in record else record['gross'] if 'gross' in record else record['debit'] or record['credit'])
+        'amount': _must_amount(record, flow_convention)        
     } for record in records ]
 
     # -- just more conditional post-processing
@@ -207,20 +223,22 @@ def process_uploaded_file(uploaded_file):
 
     try:
         # -- do a little preprocessing so we can avoid duplicating uploaded files 
-        records = _process_records(get_records_from_csv(file_contents, recordtype.csv_columns.split(','), header_included), recordtype.csv_date_format)
+        raw_records = get_records_from_csv(file_contents, recordtype.csv_columns.split(','), header_included)
+        records = _process_records(raw_records, recordtype.csv_date_format, recordtype.flow_convention)
     except:      
         logger.error(f'{sys.exc_info()[0]} {sys.exc_info()[1]}')
         traceback.print_tb(sys.exc_info()[2])  
-        logger.warning(f'failed to process with assigned record type, will try amex basic and combined (god help you if these are not amex transactions)')
-        basic_recordtype = RecordType.objects.filter(name='amex basic').first()
-        combined_recordtype = RecordType.objects.filter(name='amex combined').first()
-        for t in [ t for t in [basic_recordtype, combined_recordtype] if t ]:
-            try:                
-                logger.warning(f'failed, will try again with {t.name}: {t.csv_columns}')
-                records = _process_records(get_records_from_csv(file_contents, t.csv_columns.split(','), header_included), t.csv_date_format)
-                break 
-            except:
-                logger.warning(f'processing records with {t.name} failed')
+        # logger.warning(f'failed to process with assigned record type, will try amex basic and combined (god help you if these are not amex transactions)')
+        # basic_recordtype = RecordType.objects.filter(name='amex basic').first()
+        # combined_recordtype = RecordType.objects.filter(name='amex combined').first()
+        # for t in [ t for t in [basic_recordtype, combined_recordtype] if t ]:
+        #     try:                
+        #         logger.warning(f'failed, will try again with {t.name}: {t.csv_columns}')
+        #         raw_records = get_records_from_csv(file_contents, t.csv_columns.split(','), header_included)
+        #         records = _process_records(raw_records, t.csv_date_format)
+        #         break 
+        #     except:
+        #         logger.warning(f'processing records with {t.name} failed')
 
     if not records:
         raise Exception(f'No records could be processed from this uploaded file')
@@ -247,7 +265,12 @@ def save_processed_records(records, uploadedfile):
                 # 'creditcard': uploadedfile.creditcard,
                 'description': record['description'] or ''
             }
-            logger.warning(json.dumps({ k: str(v) for k,v in record_data.items() }, indent=4))
+            
+            # formatted
+            # logger.debug(json.dumps({ k: str(v) for k,v in record_data.items() }, indent=4))
+            # one-line
+            logger.debug({ k: str(v) for k,v in record_data.items() })
+            
             record_form = RecordForm(record_data)
             record_form.is_valid()
             if record_form.errors:

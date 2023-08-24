@@ -28,8 +28,14 @@ class BaseModel(models.Model):
 
 class RecordType(BaseModel):
 
+    # -- the signage of amount/gross column
+    # -- normal: positive is flow in, negative is flow out
+    FLOW_CONVENTION_NORMAL = 'normal'
+    FLOW_CONVENTION_REVERSE = 'reverse'
+
     name = models.CharField(max_length=50)
     csv_columns = models.CharField(max_length=1024, null=True)
+    flow_convention = models.CharField(max_length=10, choices=choiceify([FLOW_CONVENTION_NORMAL, FLOW_CONVENTION_REVERSE]), null=False, default=FLOW_CONVENTION_NORMAL)
     csv_date_format = models.CharField(max_length=20, null=True)
 
     def __str__(self):
@@ -47,26 +53,30 @@ class Account(BaseModel):
     def __str__(self):
         return self.name
 
-    def accounted_records(self):
-        return self.records.filter(transaction__isnull=False)
+    # def accounted_records(self):
+    #     return self.records.filter(transaction__isnull=False)
     
     def continuous_record_brackets(self):
+
         brackets = []
         start = None 
         end = None 
+
         for uploadedfile in self.uploadedfiles.all().order_by('first_date'):
-            if not start and not end:                
-                start = uploadedfile.first_date
-                end = uploadedfile.last_date
-                continue 
-            if uploadedfile.first_date > start and uploadedfile.first_date < end and uploadedfile.last_date > end:
-                end = uploadedfile.last_date
-                continue 
-            if uploadedfile.first_date > end:
-                brackets.append((start, end,))
-                start = uploadedfile.first_date
-                end = uploadedfile.last_date
-                continue 
+            handled = False 
+            for bracket in brackets:
+                if uploadedfile.first_date > bracket[0] and uploadedfile.first_date < bracket[1] and uploadedfile.last_date > bracket[1]:
+                    # -- extends this bracket
+                    bracket[1] = uploadedfile.last_date
+                    handled = True 
+                    break 
+                if uploadedfile.first_date > bracket[0] and uploadedfile.last_date < bracket[1]:
+                    # -- contained by this bracket, do nothing
+                    handled = True 
+                    break                 
+            if not handled:
+                brackets.append([uploadedfile.first_date, uploadedfile.last_date])
+            
         if start and end:
             brackets.append((start, end,))
         return brackets 
@@ -191,13 +201,16 @@ class TransactionRule(BaseModel):
     def filter(self):
         return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
 
+    def exclude(self):
+        return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
+
 class ProtoTransaction(BaseModel):
     '''A transitional object between a rule set -- a logical grouping of records, and a full-on transaction -- a budgetable spending abstraction'''
 
     EXCLUDE_STAT_FIELDS = ['record_count', 'record_ids']
 
     name = models.CharField(max_length=200, unique=True)
-    amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
     period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
     # account = models.ForeignKey(to=Account, related_name='prototransactions', on_delete=models.SET_NULL, null=True)    
     stats = models.JSONField(null=True)
@@ -217,13 +230,13 @@ class ProtoTransaction(BaseModel):
     @staticmethod
     def new_from(name, stats, transaction_rule_set):
         
-        fields = [ f.name for f in ProtoTransaction._meta.fields ]
+        prototransaction_fields = [ f.name for f in ProtoTransaction._meta.fields ]
 
         pt_dict = {
             'name': name,
-            'stats': { s: stats[s] for s in stats if s not in fields and s not in ProtoTransaction.EXCLUDE_STAT_FIELDS },
+            'stats': { s: stats[s] for s in stats if s not in prototransaction_fields and s not in ProtoTransaction.EXCLUDE_STAT_FIELDS },
             'transactionruleset': transaction_rule_set,
-            **{ s: stats[s] for s in stats if s in fields }
+            **{ s: stats[s] for s in stats if s in prototransaction_fields }
         }
 
         return ProtoTransaction.objects.create(**pt_dict)
@@ -440,6 +453,9 @@ class UploadedFile(BaseModel):
         elif self.creditcard:
             self.recordtype = self.creditcard.recordtype 
     
+    def account_name(self):
+        return self.account.name if self.account else self.creditcard.name if self.creditcard else "-no acct/cc-"
+    
 # class RecordGroup(BaseModel):
 #     name = models.CharField(max_length=255)
 #     stats = models.JSONField(null=True)
@@ -450,19 +466,18 @@ class Record(BaseModel):
     # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
     uploaded_file = models.ForeignKey(to=UploadedFile, related_name='records', on_delete=models.RESTRICT)    
     # transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
-    creditcardexpense = models.ForeignKey(to=CreditCardExpense, related_name='records', on_delete=models.SET_NULL, null=True)    
+    # creditcardexpense = models.ForeignKey(to=CreditCardExpense, related_name='records', on_delete=models.SET_NULL, null=True)    
     transaction_date = models.DateField()
     post_date = models.DateField(null=True)
     description = models.CharField(max_length=255, blank=True, null=True)
-    amount = models.DecimalField(decimal_places=2, max_digits=20)
-
+    amount = models.DecimalField(decimal_places=2, max_digits=20)    
     extra_fields = models.JSONField(null=True)
 
     # def __init__(self, *args, **kwargs):
     #     super(Record, self).__init__(*args, **kwargs)
         # if self.uploaded_file_id:
         #     self.account = self.uploaded_file.account
-
+    
     def __str__(self):
         return f'{self.id}, {self.uploaded_file.account or self.uploaded_file.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
 

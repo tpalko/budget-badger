@@ -15,8 +15,11 @@
                 <th>Ruleset</th>        
                 <th>Rules</th>
                 <th># Records</th>
-                <th>xAcct</th>                
-                <th>$/month</th>                
+                <th>xAcct</th>
+                <th>Period</th>
+                <th>Type</th>
+                <th>Recurring Amount</th>                
+                <th>$/month</th>
             </tr>
         {% for transactionruleset in table %}
             <tr title="{% if transactionruleset.prototransaction %}{{ transactionruleset.prototransaction.stats }}{% endif %}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
@@ -38,8 +41,12 @@
                 <td nowrap>{{ transactionruleset.records|length }}</td>
                 {% if transactionruleset.prototransaction %}
                     <td nowrap>{{ transactionruleset.prototransaction.cross_account }}</td>                    
+                    <td nowrap>{{ transactionruleset.prototransaction.period }}</td>                    
+                    <td nowrap>{{ transactionruleset.prototransaction.transaction_type }}</td>                    
+                    <td nowrap>{{ transactionruleset.prototransaction.recurring_amount }}</td>                                        
                     <td nowrap>{{ transactionruleset.prototransaction.stats.monthly_amount|format_currency }}</td>                    
                 {% else %}
+                    <td nowrap>-</td>
                     <td nowrap>-</td>
                     <td nowrap>-</td>
                     <td nowrap>-</td>

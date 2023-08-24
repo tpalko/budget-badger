@@ -6,3 +6,4 @@ _local
 settings_dev.py
 media
 data
+*.log

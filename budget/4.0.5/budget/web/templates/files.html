@@ -5,6 +5,7 @@
 
 <div>
     Showing {{ uploadedfiles|length }} files
+    <a class="button" href="{% url "reprocess_files" tenant_id=1 %}">Reprocess Files</a>   
 </div>
 
 <table class="clicky-table">

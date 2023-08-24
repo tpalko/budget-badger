@@ -13,15 +13,6 @@
 	<input type="submit" value="Save">
 </form>
 
-{% if records %}
-	{{ records|length }} Records
-	{% for record in records %}
-	<div>
-		{{ record }}
-	</div>
-	{% endfor %}
-{% endif %}
-
 {% endblock %}
 
 {% block script %}

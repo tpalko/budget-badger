@@ -47,7 +47,7 @@
                 <th>Balance at</th>            
                 <th>Minimum balance</th>
                 <th>Files</th>
-                <th>Accounted Records</th>
+                <th>Records</th>
                 <th>Start</th>
                 <th>End</th>
                 <th></th>
@@ -61,7 +61,7 @@
                 <td>{{ account.balance_at }}</td>
                 <td>{{ account.minimum_balance }}</td>
                 <td>{{ account.uploadedfiles.all|length }}</td>
-                <td>{{ account.accounted_records.all|length }} / {{ account.records.all|length }}</td>
+                <td>{{ account.records.all|length }}</td>
                 <td>{{ account.continuous_record_brackets.0.0 }}</td>
                 <td>{{ account.continuous_record_brackets.0.1 }} ({{ account.continuous_record_brackets|length }})</td>
                 <td>
@@ -101,7 +101,7 @@
             <td>{{ creditcard.cycle_billing_date }}</td>
             <td>{{ creditcard.cycle_due_date }}</td>        
             <td>{{ creditcard.uploadedfiles.all|length }}</td>    
-            <td>{{ creditcard.accounted_records.all|length }} / {{ creditcard.records.all|length }}</td>
+            <td>{{ creditcard.records.all|length }}</td>
             <td>
                 <a href="{% url "model_edit" model_name="creditcard" tenant_id=1 model_id=creditcard.id %}">edit</a>
                 <a href="{% url "model_edit" model_name="creditcard" tenant_id=1 model_id=creditcard.id %}" class="delete">delete</a>

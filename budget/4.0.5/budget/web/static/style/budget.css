@@ -101,7 +101,7 @@ form label {
 	font-size: 1.2em;
 }
 
-input {
+input, select{
 	font-size: 1.2em;
 }
 

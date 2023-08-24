@@ -169,7 +169,7 @@ class RecordGrouper(object):
         is_active = False 
         high_period = None 
         low_period = None 
-        period = None     
+        period = TransactionTypes.PERIOD_UNKNOWN 
         low_gap = None 
         high_gap = None     
 
@@ -191,8 +191,6 @@ class RecordGrouper(object):
             low_period = RecordGrouper._get_period_for_gap(low_gap)
             high_period = RecordGrouper._get_period_for_gap(high_gap)
 
-            period = TransactionTypes.PERIOD_UNKNOWN 
-
             if low_period == high_period:
                 period = low_period 
             elif low_period == TransactionTypes.PERIOD_UNKNOWN:
@@ -202,6 +200,13 @@ class RecordGrouper(object):
 
             is_active = True 
 
+        started_at = None 
+        ended_at = None 
+
+        if len(recent_dates) > 0:
+            started_at = datetime.strftime(recent_dates[0], "%m/%d/%Y") if len(recent_dates) > 0 else None
+            ended_at = datetime.strftime(recent_dates[-1], "%m/%d/%Y") if len(recent_dates) > 0 else None
+        
         return {
             'average_gap': f'{avg_gap:.0f} days',
             'low_period': low_period, 
@@ -213,8 +218,8 @@ class RecordGrouper(object):
             # 'most_frequent_date': most_frequent_date, 
             # 'most_frequent_date_probability': most_frequent_date_probability, 
             # 'earliest_date': earliest_date,
-            'started_at': datetime.strftime(recent_dates[0], "%m/%d/%Y") if len(recent_dates) > 0 else None,
-            'ended_at': datetime.strftime(recent_dates[-1], "%m/%d/%Y") if len(recent_dates) > 0 else None
+            'started_at': started_at,
+            'ended_at': ended_at
         }
 
     @staticmethod 
@@ -244,19 +249,22 @@ class RecordGrouper(object):
 
         recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=True)
         recent_amounts = [ float(abs(r.amount)) for r in recent_records ]        
+        monthly_spend = 0
 
-        end = recent_records[0].transaction_date
-        start = recent_records[-1].transaction_date 
-        range_seconds = (end - start).total_seconds()
-        of_month = (range_seconds*1.0) / (60*60*24*30)
-        total_amount = sum(recent_amounts)
+        if len(recent_records) > 0:
+            end = recent_records[0].transaction_date
+            start = recent_records[-1].transaction_date 
+            range_seconds = (end - start).total_seconds()
+            of_month = (range_seconds*1.0) / (60*60*24*30)
 
-        monthly_spend = total_amount 
+            total_amount = sum(recent_amounts)
 
-        if len(recent_records) > 1 and of_month > 1:
-            monthly_spend = total_amount / of_month
+            monthly_spend = total_amount 
 
-        logger.info(f'total: {total_amount} over {range_seconds} seconds')
+            if len(recent_records) > 1 and of_month > 1:
+                monthly_spend = total_amount / of_month
+
+            logger.info(f'total: {total_amount} over {range_seconds} seconds')
         # -- fancy custom binning, but uncooperative distributions spoil it
         # amount_bins = np.split(sorted_amounts, np.where(np.diff(sorted_amounts) > np.average(sorted_amounts)*.1)[0]+1)
         # bin_edges = [ min(bin) for bin in amount_bins ]
@@ -298,10 +306,10 @@ class RecordGrouper(object):
             # 'hist': [ float(h) for h in list(hist) ],
             # 'bins': list(bins),
             'monthly_amount': monthly_spend,
-            'amount': recurring_amount,
+            'recurring_amount': recurring_amount,
             # 'min_amount': min(recent_amounts),
             # 'max_amount': max(recent_amounts),
-            'avg_amount': np.average(recent_amounts),
+            'avg_amount': np.average(recent_amounts) if len(recent_amounts) > 0 else 0,
             'outliers_removed': removed_outliers_count,
             'is_variable': len(set(recent_amounts)) > 1,
             'amount_is_active': is_active
@@ -337,11 +345,12 @@ class RecordGrouper(object):
 
         stats = {
             'record_count': len(records),
-            'record_ids': ",".join([ str(r.id) for r in records ])
+            'record_ids': ",".join([ str(r.id) for r in records ]),
+            'description': ''
         }
 
-        if len(records) == 0:
-            raise InvalidOperation(f'No records provided')
+        # if len(records) == 0:
+        #     raise InvalidOperation(f'No records provided')
 
         '''Collect enough information about the given set of records to populate a transaction form.'''
 
@@ -372,9 +381,10 @@ class RecordGrouper(object):
         stats = { **stats, **RecordGrouper._get_timings(records) }
         stats = { **stats, **RecordGrouper._get_amount_stats(records) }
         
-        descriptions = [ r.description or '' for r in records ]
-        description_set = list(set(descriptions))
-        stats['description'] = description_set[np.array([ descriptions.count(d) for d in description_set ]).argmax()]
+        if len(records) > 0:
+            descriptions = [ r.description or '' for r in records ]
+            description_set = list(set(descriptions))
+            stats['description'] = description_set[np.array([ descriptions.count(d) for d in description_set ]).argmax()]
         
         stats['accounts'] = list(set([ str(r.uploaded_file.account) for r in records if r.uploaded_file.account ]))
         stats['creditcards'] = list(set([ str(r.uploaded_file.creditcard) for r in records if r.uploaded_file.creditcard ]))
@@ -430,6 +440,11 @@ class RecordGrouper(object):
     #     # -- model field is there otherwise 
     #     return stats or recordgroup.stats
     
+    @staticmethod
+    def filter_accounted_records(records, less_than_priority=None, is_auto=None, refresh=False):
+        rule_index = RecordGrouper.get_record_rule_index(less_than_priority=less_than_priority, is_auto=is_auto, refresh=refresh)
+        return [ r for r in records if str(r.id) not in rule_index ]
+
     @staticmethod 
     def get_record_rule_index(less_than_priority=None, is_auto=None, refresh=False):
         '''Creates an index of all records => # of TransactionRuleSets it appears in. Useful for weeding out records that have rule set
@@ -441,9 +456,14 @@ class RecordGrouper(object):
         if is_auto is not None:
             tx_rule_sets = tx_rule_sets.filter(is_auto=is_auto)
 
-        rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets ]
-        record_ids = set([ i for s in rule_sets for i in s ])
-        return { str(i): len([ s for s in rule_sets if i in s ]) for i in record_ids }
+        # -- list of lists of record IDs for each rule set 
+        # rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets ]
+        rule_set_ids = { trs.id: [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets }
+        # -- flatten and deduplicate list of lists 
+        record_ids = set([ i for s in rule_set_ids.values() for i in s ])
+        # -- mapping of record ID to the count of lists it's a part of
+        record_id_map = { str(i): [ trs_id for trs_id in rule_set_ids if i in rule_set_ids[trs_id] ] for i in record_ids }
+        return { record_id: record_id_map[record_id] for record_id in record_id_map if len(record_id_map[record_id]) > 0 }
     
     @staticmethod 
     def _prototransaction_rule_attempt(match_operator, match_value):
@@ -472,12 +492,16 @@ class RecordGrouper(object):
         for rule_set in manual_rule_sets:
             logger.debug(f'recalculating stats for manual rule set {rule_set.name}')
             records = rule_set.records(refresh=True)
-            record_rule_index = RecordGrouper.get_record_rule_index(less_than_priority=rule_set.priority, is_auto=False, refresh=True)
-            records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
+            records = RecordGrouper.filter_accounted_records(records, less_than_priority=rule_set.priority, is_auto=False, refresh=True)
             stats = RecordGrouper.get_stats(records)
-            if rule_set.prototransaction:
-                rule_set.prototransaction.update_stats(stats)
-                rule_set.prototransaction.save()
+            # stats = { k: stats[k] if stats[k] and stats[k] != "NaN" else 0 for k in stats.keys() }
+            # logger.debug(f'avg amount -- {stats["avg_amount"]}')
+            # logger.debug(f'stats for {rule_set.name}: {json.dumps(stats, indent=4)}')
+            # del stats['avg_amount']
+            proto_transaction = ProtoTransaction.objects.filter(transactionruleset=rule_set).first()
+            if proto_transaction:
+                proto_transaction.update_stats(stats)
+                proto_transaction.save()
             else:
                 proto_transaction = ProtoTransaction.new_from(rule_set.name, stats, rule_set)
 
@@ -512,8 +536,7 @@ class RecordGrouper(object):
             # and any records left over can live in multiple auto groups? however if we want to eventually
             # elevate the auto groups and prototransactions to take part in forecasting/projection, a
             # single group-per-record must be held everywhere 
-            record_rule_index = RecordGrouper.get_record_rule_index(refresh=True)
-            records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
+            records = RecordGrouper.filter_accounted_records(records, refresh=True)
             # logger.warning(f'{len(records)} records')
 
             # unaccounted_amount = sum([ r.amount for r in records ])
@@ -585,7 +608,7 @@ class RecordGrouper(object):
 
                         logger.warning(stats)
 
-                        required_fields = ['timing_is_active', 'amount_is_active', 'amount', 'transaction_type', 'period', 'record_count']
+                        required_fields = ['timing_is_active', 'amount_is_active', 'recurring_amount', 'transaction_type', 'period', 'record_count']
                         for f in required_fields:
                             if not stats[f]:
                                 raise ValueError(f'The stats calculated are insufficient. Reason: {f} = {stats[f]}.')

@@ -23,6 +23,14 @@ class BaseTransactionRuleFormSet(BaseModelFormSet):
         for form in self.forms:
             form.is_valid(preRuleSet=preRuleSet)
 
+def new_transaction_rule_form_set(extra=0):
+    return modelformset_factory(
+        TransactionRule, 
+        form=TransactionRuleForm, 
+        formset=BaseTransactionRuleFormSet, 
+        fields=('inclusion', 'record_field', 'match_operator', 'match_value', 'transactionruleset'), 
+        extra=extra)
+
 class TransactionRuleForm(ModelForm):
 
     class Meta:
@@ -30,9 +38,10 @@ class TransactionRuleForm(ModelForm):
         fields = ('id', 'inclusion', 'record_field', 'match_operator', 'match_value', 'transactionruleset')
     
     id = CharField(widget=HiddenInput(), required=False)
-    inclusion = ChoiceField(choices=choiceify([TransactionRule.INCLUSION_FILTER, TransactionRule.INCLUSION_EXCLUDE]))
-    record_field = ChoiceField(choices=[ (r.name, r.name,) for r in Record._meta.fields ])
-    match_operator = ChoiceField(choices=TransactionRule.match_operator_choices)
+    inclusion = ChoiceField(label='', choices=choiceify([TransactionRule.INCLUSION_FILTER, TransactionRule.INCLUSION_EXCLUDE]))
+    record_field = ChoiceField(label='', choices=[ (r.name, r.name,) for r in Record._meta.fields ])
+    match_operator = ChoiceField(label='', choices=TransactionRule.match_operator_choices)
+    match_value = CharField(label='')
     transactionruleset = ModelChoiceField(widget=HiddenInput(), queryset=TransactionRuleSet.objects.all())
 
     def is_valid(self, preRuleSet=False):        
@@ -145,13 +154,18 @@ class UploadedFileForm(ModelForm):
 
     def __init__(self, *args, **kwargs):
         post_copy = None 
+        # -- args are 1) POST 2) FILES
         for arg in args:
+            # -- if POST, make a copy of it
             if 'account' in arg:
                 post_copy = arg.copy()
+            # -- is 'upload' in FILES, or POST?, whichever, grab the name as original name
             if 'upload' in arg:                
                 original_filename = arg['upload'].name 
+        # -- if we found and copied POST, set the 'upload' name as original name - what was it before?
         if post_copy:
             post_copy.__setitem__('original_filename', original_filename)
+            # -- put everything back together
             args = (post_copy, args[1],)
         
         super(UploadedFileForm, self).__init__(*args, **kwargs)

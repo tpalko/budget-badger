@@ -9,7 +9,7 @@ import sys
 from datetime import datetime
 import logging
 import traceback
-from web.forms import form_types, BaseTransactionRuleFormSet, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
+from web.forms import new_transaction_rule_form_set, form_types, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
 from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
@@ -57,8 +57,15 @@ def model_edit(request, tenant_id, model_name, model_id=None):
         model = model_map[model_name]['model'].objects.get(pk=model_id)
     
     if request.method == "DELETE":
-        model.delete()
-        return redirect(f'accounts', tenant_id=tenant_id)
+        logger.info(f'deleting {model_name} {model_id}')
+
+        try:
+            model.delete()
+        except:
+            logger.error(f'{sys.exc_info()[0]} {sys.exc_info()[1]}')
+            traceback.print_tb(sys.exc_info()[2])
+
+        return redirect(f'model_list', tenant_id=tenant_id)
     elif request.method == "POST":
         form = model_map[model_name]['form'](request.POST, instance=model)
         if form.is_valid():
@@ -118,7 +125,8 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
         logger.error(message)
         traceback.print_tb(sys.exc_info()[2])
 
-    TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=1)
+    TransactionRuleFormSet = new_transaction_rule_form_set(extra=1)
+    
     transactionruleset = TransactionRuleSet()
     transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
     transactionruleset_form = TransactionRuleSetForm()
@@ -126,7 +134,9 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     transactionrules = []
 
     if transactionruleset_id:
-        TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=0)
+        
+        TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)
+        
         transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
         transactionrules = TransactionRule.objects.filter(transactionruleset_id=transactionruleset_id)
         transactionrule_formset = TransactionRuleFormSet(queryset=transactionrules)
@@ -148,12 +158,7 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
 
 def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule=None):
 
-    TransactionRuleFormSet = modelformset_factory(
-        TransactionRule, 
-        form=TransactionRuleForm, 
-        formset=BaseTransactionRuleFormSet, 
-        fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), 
-        extra=1)
+    TransactionRuleFormSet = new_transaction_rule_form_set(extra=1)
 
     transactionruleset = TransactionRuleSet()
     transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
@@ -164,12 +169,7 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
 
     if transactionruleset_id:
 
-        TransactionRuleFormSet = modelformset_factory(
-        TransactionRule, 
-        form=TransactionRuleForm, 
-        formset=BaseTransactionRuleFormSet, 
-        fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), 
-        extra=0)
+        TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)
 
         transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
         transactionrules = TransactionRule.objects.filter(transactionruleset_id=transactionruleset_id)
@@ -203,7 +203,8 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
     elif request.method == "POST":
         logger.warning(request.POST)
     
-        TransactionRuleFormSet = modelformset_factory(TransactionRule, form=TransactionRuleForm, formset=BaseTransactionRuleFormSet, fields=('record_field', 'match_operator', 'match_value', 'transactionruleset'), extra=0)
+        TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)
+        
         transactionrule_formset = TransactionRuleFormSet(request.POST, queryset=transactionrules)
 
         if 'id' in request.POST and request.POST['id'].strip() != '':
@@ -418,8 +419,15 @@ def records(request, tenant_id):
     if request.method == "POST":
         record_sort = request.POST['record_sort'] if 'record_sort' in request.POST else '-date' 
 
-    records_by_account = [ { 'obj': a, 'records': Record.objects.filter(uploaded_file__account=a).order_by('-post_date') } for a in Account.objects.all() ]
-    records_by_creditcard = [ {'obj': c, 'records': Record.objects.filter(uploaded_file__creditcard=c).order_by('-post_date') } for c in CreditCard.objects.all() ]
+    records_by_account = [ { 
+        'obj': a, 
+        'records': Record.objects.filter(uploaded_file__account=a).order_by('-post_date') 
+    } for a in Account.objects.all() ]
+
+    records_by_creditcard = [ {
+        'obj': c, 
+        'records': Record.objects.filter(uploaded_file__creditcard=c).order_by('-post_date') 
+    } for c in CreditCard.objects.all() ]
 
     if hide_accounted:
         for a in records_by_account:
@@ -460,7 +468,7 @@ def files(request, tenant_id):
             uploadedfile.refresh_from_db()
             # uploadedfile = UploadedFile.objects.get(pk=uploadedfile.id)
 
-            logger.debug(uploadedfile.creditcard.recordtype.csv_columns)
+            # logger.debug(uploadedfile.creditcard.recordtype.csv_columns)
 
             try:
                 file_details = process_uploaded_file(uploadedfile)
@@ -471,8 +479,6 @@ def files(request, tenant_id):
 
                 save_processed_records(file_details['records'], uploadedfile)
 
-                RecordGrouper.group_records()
-
                 return redirect('records', tenant_id=tenant_id)
 
             except:
@@ -480,6 +486,8 @@ def files(request, tenant_id):
                 logger.warning(message)
                 traceback.print_tb(sys.exc_info()[2])
                 uploadedfile.delete()
+            
+            RecordGrouper.group_records()
                 
     template_data = {
         'messages': [message],
@@ -488,6 +496,20 @@ def files(request, tenant_id):
     }
 
     return render(request, "files.html", template_data)
+
+def reprocess_files(request, tenant_id):
+
+    files = UploadedFile.objects.all()
+    for f in files:        
+        details = process_uploaded_file(f)
+        db_records = f.records.all()
+        logger.info(f'Reprocessing {f.original_filename}/{f.account_name()} found {len(details["records"])} records, {len(db_records)} currently in database')
+        logger.warning(f'Deleting {len(db_records)} from {f.account_name()}')
+        db_records.delete()
+        logger.info(f'Saving {len(details["records"])} records from reprocessing uploaded file {f.original_filename}')
+        save_processed_records(details['records'], f)
+    
+    return redirect("files", tenant_id=tenant_id)
 
 def regroup_records(request, tenant_id):
 
@@ -744,8 +766,7 @@ def transaction_edit(request, tenant_id, transaction_id):
             logger.error("not valid!")
 
 
-    template_data = {
-        'records': transaction.records.all().order_by('-transaction_date'),
+    template_data = {        
         'form': transaction_form, 
         'new_or_edit': 'Edit', 
         'transaction_type_or_name': f'{transaction_type_display(transaction.transaction_type)}: {transaction.name}'

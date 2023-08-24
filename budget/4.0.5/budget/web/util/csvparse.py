@@ -71,11 +71,11 @@ def get_records_from_csv(data, columns, header_included):
                 next = line[lastcomma:comma].strip()
                 lastcomma = comma + 1                
                 next_item = next.replace('"', '')
-                logger.debug(f'next item: {next_item}')
+                # logger.debug(f'next item: {next_item}')
                 items.append(next_item)
             items.append(line[lastcomma:].strip())
             if any(items):
-                logger.info(f'adding {",".join(items)} as a record')
+                logger.debug(f'adding {",".join(items)} as a record')
                 records.append(dict(zip(columns, items)))
             else:
                 logger.debug(f'no items found on this line')
