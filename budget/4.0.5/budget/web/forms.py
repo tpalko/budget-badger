@@ -4,7 +4,7 @@ from django.forms import Form, ModelChoiceField, ModelForm, HiddenInput, CharFie
 from django.forms.models import modelformset_factory, BaseModelFormSet
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
-from web.models import BaseModel, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
+from web.models import BaseModel, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
 import logging 
 import web.util.dates as utildates
 from web.util.modelutil import TransactionTypes, choiceify
@@ -83,19 +83,19 @@ class TransactionRuleSetForm(ModelForm):
 
         super(TransactionRuleSetForm, self).__init__(*args, **kwargs)
 
-class RecordTypeForm(ModelForm):
+class RecordFormatForm(ModelForm):
 
     class Meta:
-        model = RecordType 
+        model = RecordFormat 
         fields = ['name', 'csv_columns', 'csv_date_format']
 
 class CreditCardForm(ModelForm):
 
     class Meta:
         model = CreditCard 
-        fields = ['recordtype', 'name', 'account_number', 'interest_rate', 'cycle_billing_date', 'cycle_due_date']
+        fields = ['recordformat', 'name', 'account_number', 'interest_rate', 'cycle_billing_date', 'cycle_due_date']
     
-    recordtype = ModelChoiceField(queryset=RecordType.objects.all(), required=False)
+    recordformat = ModelChoiceField(queryset=RecordFormat.objects.all(), required=False)
 
 class RecordForm(ModelForm):
 
@@ -183,7 +183,7 @@ class AccountForm(ModelForm):
 
     class Meta:
         model = Account 
-        fields = ['name', 'balance', 'balance_at', 'minimum_balance', 'account_number', 'recordtype']
+        fields = ['name', 'balance', 'balance_at', 'minimum_balance', 'account_number', 'recordformat']
 
 BASE_TRANSACTION_FIELDS = ['id', 'name', 'amount', 'account', 'transaction_type', 'is_active', 'is_imported']
 

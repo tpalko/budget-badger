@@ -4,7 +4,7 @@ from web.util.recordgrouper import RecordGrouper
 from web.util.modelutil import TransactionTypes
 from django.core.exceptions import ValidationError
 from web.util.csvparse import get_records_from_csv
-from web.models import UploadedFile, Record, Transaction, RecordType
+from web.models import UploadedFile, Record, Transaction, RecordFormat
 from web.forms import RecordForm
 
 from datetime import datetime, timedelta
@@ -209,12 +209,12 @@ def process_uploaded_file(uploaded_file):
 
     file_contents = uploaded_file.upload.read()
 
-    recordtype = None 
+    recordformat = None 
 
     if uploaded_file.account:
-        recordtype = uploaded_file.account.recordtype 
+        recordformat = uploaded_file.account.recordformat 
     elif uploaded_file.creditcard:
-        recordtype = uploaded_file.creditcard.recordtype 
+        recordformat = uploaded_file.creditcard.recordformat 
     else:
         raise Exception("Uploaded file {uploaded_file.id} has neither account nor credit card association")
     
@@ -223,15 +223,15 @@ def process_uploaded_file(uploaded_file):
 
     try:
         # -- do a little preprocessing so we can avoid duplicating uploaded files 
-        raw_records = get_records_from_csv(file_contents, recordtype.csv_columns.split(','), header_included)
-        records = _process_records(raw_records, recordtype.csv_date_format, recordtype.flow_convention)
+        raw_records = get_records_from_csv(file_contents, recordformat.csv_columns.split(','), header_included)
+        records = _process_records(raw_records, recordformat.csv_date_format, recordformat.flow_convention)
     except:      
         logger.error(f'{sys.exc_info()[0]} {sys.exc_info()[1]}')
         traceback.print_tb(sys.exc_info()[2])  
         # logger.warning(f'failed to process with assigned record type, will try amex basic and combined (god help you if these are not amex transactions)')
-        # basic_recordtype = RecordType.objects.filter(name='amex basic').first()
-        # combined_recordtype = RecordType.objects.filter(name='amex combined').first()
-        # for t in [ t for t in [basic_recordtype, combined_recordtype] if t ]:
+        # basic_recordformat = Recordformat.objects.filter(name='amex basic').first()
+        # combined_recordformat = Recordformat.objects.filter(name='amex combined').first()
+        # for t in [ t for t in [basic_recordformat, combined_recordformat] if t ]:
         #     try:                
         #         logger.warning(f'failed, will try again with {t.name}: {t.csv_columns}')
         #         raw_records = get_records_from_csv(file_contents, t.csv_columns.split(','), header_included)

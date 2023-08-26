@@ -3,9 +3,9 @@
 
 {% block content %}
 
-<h2>Record Type Management</h2>
+<h2>Record Format Management</h2>
 
-<a href="{% url "model_edit" tenant_id=1 model_name="recordtype" %}">new record type</a>
+<a href="{% url "model_edit" tenant_id=1 model_name="recordformat" %}">new record format</a>
 
 <div class="row">
     <div class="col-16">
@@ -16,15 +16,15 @@
                 <th>CSV Date Format</th>
                 <th></th>
             </tr>
-    {% for recordtype in recordtypes %}
+    {% for recordformat in recordformats %}
 
         <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
-            <td>{{ recordtype.name }}</td>
-            <td title="{{ recordtype.csv_columns }}">{{ recordtype.csv_columns|truncatechars:100 }}</td>
-            <td>{{ recordtype.csv_date_format }}</td>
+            <td>{{ recordformat.name }}</td>
+            <td title="{{ recordformat.csv_columns }}">{{ recordformat.csv_columns|truncatechars:100 }}</td>
+            <td>{{ recordformat.csv_date_format }}</td>
             <td>
-                <a href="{% url "model_edit" model_name="recordtype" tenant_id=1 model_id=recordtype.id %}">edit</a>
-                <a href="{% url "model_edit" model_name="recordtype" tenant_id=1 model_id=recordtype.id %}" class="delete">delete</a>
+                <a href="{% url "model_edit" model_name="recordformat" tenant_id=1 model_id=recordformat.id %}">edit</a>
+                <a href="{% url "model_edit" model_name="recordformat" tenant_id=1 model_id=recordformat.id %}" class="delete">delete</a>
             </td>
         </tr>
 
@@ -42,7 +42,7 @@
             <tr>
                 <th>Name</th>
                 <th>Account #</th>
-                <th>Record Type</th>
+                <th>Record format</th>
                 <th>Balance</th>
                 <th>Balance at</th>            
                 <th>Minimum balance</th>
@@ -56,7 +56,7 @@
             <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
                 <td>{{ account.name }}</td>
                 <td>{{ account.account_number }}</td>
-                <td>{{ account.recordtype }}</td>
+                <td>{{ account.recordformat }}</td>
                 <td>{{ account.balance }}</td>
                 <td>{{ account.balance_at }}</td>
                 <td>{{ account.minimum_balance }}</td>
@@ -82,7 +82,7 @@
         <table>
             <tr>
                 <th>Name</th>
-                <th>Record Type</th>
+                <th>Record format</th>
                 <th>Account Number</th>
                 <th>Interest Rate</th>
                 <th>Billing Date</th>
@@ -95,7 +95,7 @@
 
         <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
             <td>{{ creditcard.name }}</td>
-            <td>{{ creditcard.recordtype }}</td>
+            <td>{{ creditcard.recordformat }}</td>
             <td>{{ creditcard.account_number }}</td>
             <td>{{ creditcard.interest_rate }}</td>
             <td>{{ creditcard.cycle_billing_date }}</td>

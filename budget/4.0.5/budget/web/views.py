@@ -9,8 +9,8 @@ import sys
 from datetime import datetime
 import logging
 import traceback
-from web.forms import new_transaction_rule_form_set, form_types, TransactionRuleSetForm, TransactionRuleForm, CreditCardForm, RecordTypeForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordType, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
+from web.forms import new_transaction_rule_form_set, form_types, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
+from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
@@ -29,9 +29,9 @@ def model_list(request, tenant_id):
 
     accounts = Account.objects.order_by('id')
     creditcards = CreditCard.objects.all()
-    recordtypes = RecordType.objects.all()
+    recordformats = RecordFormat.objects.all()
 
-    return render(request, "model_list.html", {'accounts': accounts, 'creditcards': creditcards, 'recordtypes': recordtypes})
+    return render(request, "model_list.html", {'accounts': accounts, 'creditcards': creditcards, 'recordformats': recordformats})
 
 model_map = {
     'creditcard': {
@@ -42,9 +42,9 @@ model_map = {
         'model': Account,
         'form': AccountForm
     },
-    'recordtype': {
-        'model': RecordType,
-        'form': RecordTypeForm 
+    'recordformat': {
+        'model': RecordFormat,
+        'form': RecordFormatForm 
     }
 }
 

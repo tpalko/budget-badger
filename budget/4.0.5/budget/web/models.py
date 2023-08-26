@@ -26,7 +26,7 @@ class BaseModel(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     deleted_at = models.DateTimeField(null=True)
 
-class RecordType(BaseModel):
+class RecordFormat(BaseModel):
 
     # -- the signage of amount/gross column
     # -- normal: positive is flow in, negative is flow out
@@ -43,7 +43,7 @@ class RecordType(BaseModel):
 
 class Account(BaseModel):
 
-    recordtype = models.ForeignKey(RecordType, related_name='accounts', on_delete=models.RESTRICT, null=True)
+    recordformat = models.ForeignKey(RecordFormat, related_name='accounts', on_delete=models.RESTRICT, null=True)
     name = models.CharField(max_length=255, null=False)
     account_number = models.CharField(max_length=50, null=True)
     balance = models.DecimalField(decimal_places=2, max_digits=20)
@@ -83,7 +83,7 @@ class Account(BaseModel):
         
 class CreditCard(BaseModel):
 
-    recordtype = models.ForeignKey(RecordType, related_name='creditcards', on_delete=models.RESTRICT, null=True)
+    recordformat = models.ForeignKey(RecordFormat, related_name='creditcards', on_delete=models.RESTRICT, null=True)
     name = models.CharField(max_length=255, null=False)
     account_number = models.CharField(max_length=50, null=True)
     interest_rate = models.DecimalField(decimal_places=2, max_digits=5, default=0)
@@ -435,7 +435,7 @@ class PlannedPayment(models.Model):
 
 class UploadedFile(BaseModel):
 
-    recordtype = None 
+    recordformat = None 
 
     upload = models.FileField(upload_to='uploads/')
     account = models.ForeignKey(to=Account, related_name='uploadedfiles', on_delete=models.CASCADE, null=True, blank=True)
@@ -449,9 +449,9 @@ class UploadedFile(BaseModel):
     def __init__(self, *args, **kwargs):
         super(UploadedFile, self).__init__(*args, **kwargs)
         if self.account:
-            self.recordtype = self.account.recordtype 
+            self.recordformat = self.account.recordformat 
         elif self.creditcard:
-            self.recordtype = self.creditcard.recordtype 
+            self.recordformat = self.creditcard.recordformat 
     
     def account_name(self):
         return self.account.name if self.account else self.creditcard.name if self.creditcard else "-no acct/cc-"
