@@ -132,11 +132,11 @@ table tr.odd {
     color: #000;
 }
 
-table.records-table tr{
+div.accounting-table table tr{
 	color: #666;
 }
 
-table.records-table tr.accounted {
+div.accounting-table table tr.accounted {
 	color: #000;
 }
 

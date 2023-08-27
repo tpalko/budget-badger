@@ -150,7 +150,7 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
         'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: t.priority, reverse=False),
         'message': message,
         'transactionruleset_form': transactionruleset_form,
-        'recordfields': [ f.name for f in Record._meta.fields ],
+        # 'recordfields': [ f.name for f in Record._meta.fields ],
         'transactionrule_formset': transactionrule_formset,
         'join_operators': TransactionRuleSet.join_operator_choices
     }
@@ -308,8 +308,6 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                 
                 stats = RecordGrouper.get_stats(transactionruleset.records(refresh=True))
 
-                logger.info(dir(transactionruleset))
-                
                 try:
                     transactionruleset.prototransaction.update_stats(stats)
                     transactionruleset.prototransaction.save() 
@@ -570,6 +568,13 @@ def files(request, tenant_id):
 
                 save_processed_records(file_details['records'], uploadedfile)
 
+                try:
+                    RecordGrouper.group_records()
+                except:
+                    message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: failed to group records after file upload {uploadedfile.id}'
+                    logger.warning(message)
+                    traceback.print_tb(sys.exc_info()[2])
+
                 return redirect('records', tenant_id=tenant_id)
 
             except:
@@ -578,7 +583,7 @@ def files(request, tenant_id):
                 traceback.print_tb(sys.exc_info()[2])
                 uploadedfile.delete()
             
-            RecordGrouper.group_records()
+            
                 
     template_data = {
         'messages': [message],

@@ -543,7 +543,7 @@ class RecordGrouper(object):
 
             for description in distinct_descriptions:
 
-                logger.warning(f'\nTrying {description}')
+                logger.info(f'\nTrying {description}')
                 # -- if we want to enable 'split accounts' again 
                 # -- this is what it consumes 
                 # account = {
@@ -573,7 +573,7 @@ class RecordGrouper(object):
                     join_operator=TransactionRuleSet.JOIN_OPERATOR_AND, 
                     is_auto=True
                 )
-                logger.warning(f'Created rule set {transaction_rule_set.id}')
+                logger.info(f'Created rule set {transaction_rule_set.id}')
                 
                 match_operator = TransactionRule.MATCH_OPERATOR_EQUALS_HUMAN
                 match_value = description 
@@ -584,12 +584,12 @@ class RecordGrouper(object):
                     
                     TransactionRule.objects.create(transactionruleset=transaction_rule_set, **rule_attempt)
                     transaction_rule_set.refresh_from_db()
-                    logger.warning("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
+                    logger.debug("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
                     
                     records = transaction_rule_set.records(refresh=True)
 
-                    logger.warning(f'Attempting rule {rule_attempt} -> {len(records)} records')
-                    logger.warning("\n".join([ str(r) for r in records ]))
+                    logger.info(f'Attempting rule {rule_attempt} -> {len(records)} records')
+                    logger.debug("\n".join([ str(r) for r in records ]))
 
                     # record_rule_index = RecordGrouper.get_record_rule_index(refresh=True)                    
                     # records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
@@ -598,7 +598,7 @@ class RecordGrouper(object):
                     try:
                         stats = RecordGrouper.get_stats(records)
 
-                        logger.warning(stats)
+                        logger.debug(stats)
 
                         required_fields = ['timing_is_active', 'amount_is_active', 'recurring_amount', 'transaction_type', 'period', 'record_count']
                         for f in required_fields:
@@ -607,7 +607,7 @@ class RecordGrouper(object):
                         
                         proto_transaction = ProtoTransaction.new_from_rule_attempt(rule_attempt, stats, transaction_rule_set)
                         
-                        logger.warning(f'Seems ok.. made prototransaction {proto_transaction.id}')
+                        logger.info(f'Seems ok.. made prototransaction {proto_transaction.id}')
                         reset_loop = is_modified_description
                         break 
                     
@@ -618,7 +618,7 @@ class RecordGrouper(object):
                         logger.error(sys.exc_info()[0])
                         logger.error(sys.exc_info()[1])
                         traceback.print_tb(sys.exc_info()[2])
-                        logger.error(f'The transactionruleset {transaction_rule_set.name} is cleared of rules.')
+                        logger.warning(f'Deleting all rules from transactionruleset {transaction_rule_set.name}')
                         transaction_rule_set.transactionrules.all().delete()
 
                 # -- if we made a prototransaction
@@ -637,7 +637,9 @@ class RecordGrouper(object):
             # -- then quit for good 
             if not reset_loop:
                 break 
-            
+
+        logger.info(f'All done regrouping!')    
+
                 # record_group = RecordGroup.objects.filter(name=description).first()
 
                 # if not record_group:
