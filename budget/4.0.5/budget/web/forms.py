@@ -87,7 +87,7 @@ class RecordFormatForm(ModelForm):
 
     class Meta:
         model = RecordFormat 
-        fields = ['name', 'csv_columns', 'csv_date_format']
+        fields = ['name', 'csv_columns', 'flow_convention', 'csv_date_format']
 
 class CreditCardForm(ModelForm):
 

@@ -248,7 +248,7 @@ class RecordGrouper(object):
     def _get_amount_stats(records, remove_outliers=False):
 
         recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=True)
-        recent_amounts = [ float(abs(r.amount)) for r in recent_records ]        
+        recent_amounts = [ float(r.amount) for r in recent_records ]        
         monthly_spend = 0
 
         if len(recent_records) > 0:

@@ -133,14 +133,14 @@ def get_records_template_data(filtered_records):
 
     if len(filtered_records) > 0:
 
-        total = sum([ abs(r.amount) for r in filtered_records])
+        total = sum([ r.amount for r in filtered_records])
 
         desc_stats = [
             {
                 'description': desc,
                 'stats': { 
-                    'percentage': 100*sum([ abs(r.amount) for r in filtered_records if r.description == desc ])/total, 
-                    'sum': sum([ abs(r.amount) for r in filtered_records if r.description == desc ]),
+                    'percentage': 100*sum([ r.amount for r in filtered_records if r.description == desc ])/total, 
+                    'sum': sum([ r.amount for r in filtered_records if r.description == desc ]),
                     'count': len([ r for r in filtered_records if r.description == desc ])
                 } 
             } for desc in set([ o.description for o in filtered_records ])
@@ -185,6 +185,10 @@ def _must_amount(record, flow_convention):
         if f in record:
             amount = _floatify(record[f])
             if amount:
+                if (f == 'debit' and amount > 0) or (f == 'credit' and amount < 0):
+                    amount = -amount 
+                elif f in flow_based_fields and flow_convention == RecordFormat.FLOW_CONVENTION_REVERSE:
+                    amount = -amount 
                 break 
     
     return amount
