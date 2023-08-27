@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Q, F
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from autoslug import AutoSlugField
@@ -7,6 +7,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 import logging
 from datetime import datetime, timedelta, date
 import calendar
+import hashlib
 import json 
 import web.util.dates as utildates
 from web.util.modelutil import choiceify, TransactionTypes
@@ -109,27 +110,30 @@ class Vehicle(BaseModel):
     model = models.CharField(max_length=255, null=True)
     year = models.IntegerField(null=True)
 
-def records_from_rules(filters, join_operator):
+def records_from_rules(rule_logics, join_operator):
     
-    # logger.warning(f'matching records on {json.dumps(filters, indent=4)}')
+    # logger.warning(f'matching records on {json.dumps(rule_logics, indent=4)}')
     qs = None 
 
     if join_operator == TransactionRuleSet.JOIN_OPERATOR_AND:
 
         qs = Record.objects.all()
-        for filter in filters:
-            qs = qs.filter(**filter)
+        for logic in rule_logics:
+            # logger.debug(f'applying filter {filter}')
+            qs = logic.apply(qs)
         
         qs = qs.order_by('-transaction_date')
         
     elif join_operator == TransactionRuleSet.JOIN_OPERATOR_OR:
         
-        q = Q()
-        for filter in filters:
-            q = Q(q | Q(**filter))
+        qs = Record.objects.none()
+        for logic in rule_logics:
+            qs = qs | logic.apply(Record.objects.all())            
 
-        qs = Record.objects.filter(q).order_by('-transaction_date')
+        qs = qs.order_by('-transaction_date')
     
+    qs = qs.exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+
     return list(qs)
 
 class TransactionRuleSet(BaseModel):
@@ -150,10 +154,50 @@ class TransactionRuleSet(BaseModel):
     def records(self, refresh=False):
 
         if not self._records or refresh:
-            filters = [ tr.filter() for tr in self.transactionrules.all() ]
+            filters = [ TransactionRuleLogic(tr) for tr in self.transactionrules.all() ]
             self._records = records_from_rules(filters, self.join_operator)
         
         return self._records 
+
+    def save(self, *args, **kwargs):
+        super(TransactionRuleSet, self).save(*args, **kwargs)
+
+        trs = TransactionRuleSet.objects.all().order_by('priority')
+        curr = None 
+        for rs in trs:
+            if not curr:
+                curr = rs.priority 
+                continue 
+            if curr == rs.priority:
+                rs.priority += 1
+                curr = rs.priority 
+                rs.save()
+            else:
+                curr = rs.priority
+
+
+class TransactionRuleLogic(object):
+
+    operator_fn = None 
+    fn_key = None 
+    fn_arg = None 
+
+    def __init__(self, *args, **kwargs):        
+        if len(args) < 1:
+            raise Exception("TransactionRuleLogic must be provided with a TransactionRule")
+        tr = args[0]
+        self.operator_fn = tr.inclusion
+        self.fn_key = f'{tr.record_field.lower()}{tr.match_operator_lookup[tr.match_operator]}'
+        self.fn_arg = tr.match_value
+
+    def key_arg_dict(self):
+        return {self.fn_key: self.fn_arg}
+
+    def apply(self, query_set):
+        if self.operator_fn == TransactionRule.INCLUSION_FILTER:
+            return query_set.filter(**self.key_arg_dict())
+        elif self.operator_fn == TransactionRule.INCLUSION_EXCLUDE:
+            return query_set.exclude(**self.key_arg_dict())
 
 class TransactionRule(BaseModel):
     '''A building block for TransactionRuleSet'''
@@ -201,8 +245,7 @@ class TransactionRule(BaseModel):
     def filter(self):
         return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
 
-    def exclude(self):
-        return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
+
 
 class ProtoTransaction(BaseModel):
     '''A transitional object between a rule set -- a logical grouping of records, and a full-on transaction -- a budgetable spending abstraction'''

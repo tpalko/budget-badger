@@ -37,9 +37,12 @@ class TransactionRuleForm(ModelForm):
         model = TransactionRule 
         fields = ('id', 'inclusion', 'record_field', 'match_operator', 'match_value', 'transactionruleset')
     
+    record_field_choices = [ (r.name, r.name,) for r in Record._meta.fields ]
+    record_field_choices.extend([ ('uploaded_file__account__name', 'account')])
+
     id = CharField(widget=HiddenInput(), required=False)
     inclusion = ChoiceField(label='', choices=choiceify([TransactionRule.INCLUSION_FILTER, TransactionRule.INCLUSION_EXCLUDE]))
-    record_field = ChoiceField(label='', choices=[ (r.name, r.name,) for r in Record._meta.fields ])
+    record_field = ChoiceField(label='', choices=record_field_choices)
     match_operator = ChoiceField(label='', choices=TransactionRule.match_operator_choices)
     match_value = CharField(label='')
     transactionruleset = ModelChoiceField(widget=HiddenInput(), queryset=TransactionRuleSet.objects.all())
@@ -60,6 +63,10 @@ class TransactionRuleForm(ModelForm):
             if self.cleaned_data['match_operator'] not in [ c[0] for c in TransactionRule.match_operator_choices ]:
                 raise ValidationError({'match_operator': _(f'Match operator must be one of {",".join(TransactionRule.operation_map.keys())}')})
 
+        if 'match_value' in self.cleaned_data:
+            if len(self.cleaned_data['match_value']) < 3:
+                raise ValidationError({'match_value': _(f'Match value must be at least three characters')})
+            
 class TransactionRuleSetForm(ModelForm):
 
     class Meta:

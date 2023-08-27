@@ -1,4 +1,5 @@
 from django.shortcuts import render, redirect
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_http_methods
 from django.template.loader import render_to_string
@@ -6,16 +7,16 @@ from django.http import JsonResponse
 from django.forms import modelformset_factory
 
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import traceback
 from web.forms import new_transaction_rule_form_set, form_types, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
+from web.models import records_from_rules, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
-from web.util.viewutil import process_uploaded_file, save_processed_records, ruleset_stats
+from web.util.viewutil import process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
 # from django.core import serializers
 
@@ -223,7 +224,10 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     transactionrule_formset.is_valid(preRuleSet=transactionruleset.id is None)
                     
                     logger.warning(f'Getting records from {[ form.cleaned_data for form in transactionrule_formset ]}')
-                    filters = [ TransactionRule(**form.cleaned_data).filter() for form in transactionrule_formset ]
+
+                    # -- yes, we're recreating the TransactionRuleSet.records method here, we don't have actual objects
+                    # -- sort of.. just the forms that hold the fields for the objects
+                    filters = [ TransactionRuleLogic(TransactionRule(**form.cleaned_data)) for form in transactionrule_formset ]
                     filters = [ f for f in filters if f ]
                     logger.warning(f'have {len(filters)} filters')
                     record_queryset = records_from_rules(filters, transactionruleset_form.cleaned_data['join_operator'])
