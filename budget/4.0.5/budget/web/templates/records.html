@@ -5,7 +5,8 @@
 
 <h2>Record Management</h2>
 
-<a href="{% url "records" tenant_id=1 %}?hide_accounted={% if hide_accounted %}0{% else %}1{% endif %}">{% if hide_accounted %}show accounted{% else %}hide accounted{% endif %}</a>
+<a href="{% url "records" tenant_id=1 %}?hide_accounted={% if hide_accounted %}0{% else %}1{% endif %}&hide_internal={% if hide_internal %}1{% else %}0{% endif %}">{% if hide_accounted %}show accounted{% else %}hide accounted{% endif %}</a>
+<a href="{% url "records" tenant_id=1 %}?hide_accounted={% if hide_accounted %}1{% else %}0{% endif %}&hide_internal={% if hide_internal %}0{% else %}1{% endif %}">{% if hide_internal %}show internal{% else %}hide internal{% endif %}</a>
 
 <ul id="tabs-records" class="tabs">
     {% for account in records_by_account %} 
@@ -17,13 +18,17 @@
 </ul>
 
 {% for account in records_by_account %} 
-    {% with record_parent_base=account type="account" %}
+    {% with records=account.records type="account" %}
+    <div id="tabs-records-account-{{ account.obj.id }}" class="accounting-table">
         {% include "_records_table.html" %}
+    </div>
     {% endwith %}
 {% endfor %}  
 {% for creditcard in records_by_creditcard %} 
-    {% with record_parent_base=creditcard type="creditcard" %}
+    {% with records=creditcard.records type="creditcard" %}
+    <div id="tabs-records-creditcard-{{ creditcard.obj.id }}" class="accounting-table">
         {% include "_records_table.html" %}
+    </div>
     {% endwith %}
 {% endfor %}    
 
@@ -49,10 +54,16 @@
                 document.location = baseRuleSetUrl.replace(/nothing:contains:nothing/, col + ":contains:" + val)
             })
         })
-        document.querySelectorAll(".record_sort").forEach((el, i) => {
+        document.querySelectorAll(".sort-column").forEach((el, i) => {
             el.addEventListener('click', (e) => {
                 e.preventDefault();
-                document.location = document.location + "?sort=" + el.dataset.recordsort;
+                var this_sort = el.dataset.sortvalue;
+                if (this_sort == "{{ record_sort }}") {
+                    this_sort = "-" + this_sort;
+                } else if ("-" + this_sort == "{{ record_sort }}") {
+                    // tick already removed
+                }
+                document.location = document.location.origin + document.location.pathname + "?sort=" + this_sort;
             });
         });
 

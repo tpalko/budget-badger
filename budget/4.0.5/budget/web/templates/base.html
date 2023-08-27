@@ -22,6 +22,7 @@
 				<li><a href="{% url "model_list" tenant_id="1" %}">Accounts/Cards</a></li>
 				<li><a href="{% url "files" tenant_id="1" %}">Files</a></li>
 				<li><a href="{% url "records" tenant_id="1" %}">Records</a></li>			
+				<li><a href="{% url "filters" tenant_id="1" %}">Filters</a></li>			
 				<li><a href="{% url "transactionrulesets_list" tenant_id="1" %}">Rules</a></li>			
 				<li><a href="{% url "transactions" tenant_id=1 %}">Transactions</a></li>
 				<li><a href="{% url "projection" tenant_id="1" %}">Projection</a></li>
@@ -29,14 +30,12 @@
 		</div>
 	</div>
 	<div class="row">
-		<div>		
-			{% if messages %}
-			<ul class="messages">
+		<div>
+			<ul class="messages" style="display: none;">
 				{% for message in messages %}
 				<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
 				{% endfor %}
-			</ul>
-			{% endif %}
+			</ul>			
 		</div>
 	</div>
 </div>

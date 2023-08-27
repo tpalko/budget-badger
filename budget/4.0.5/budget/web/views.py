@@ -403,42 +403,129 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
 
     return JsonResponse({'success': success, 'message': message})
 
+def filters(request, tenant_id):
+
+    records = Record.objects.filter(
+        Q(Q(uploaded_file__creditcard__isnull=False) | Q(uploaded_file__account__isnull=False, description__regex=r"FROM|TO.+CHECKING|SAVINGS")) & Q(amount__gt=0, record_type=Record.RECORD_TYPE_UNKNOWN)
+    ).order_by('-transaction_date')
+
+    # cc_payments = Record.objects.filter(
+    #     uploaded_file__creditcard__isnull=False, 
+    #     amount__gt=0            
+    # )
+    # cc_payments = cc_payments.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
+
+    # bank_transfers = Record.objects.filter(
+    #     uploaded_file__account__isnull=False, 
+    #     description__regex=r"FROM|TO.+CHECKING|SAVINGS", 
+    #     amount__gt=0
+    # )
+    # bank_transfers = bank_transfers.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
+
+    template_models = [ {
+        'id': p.id,
+        'date': p.transaction_date, 
+        'account': p.uploaded_file.account_name,
+        'amount': p.amount,
+        'description': p.description,
+        'record_type': p.record_type,
+        'extra_fields': p.extra_fields        
+    } for p in records ]
+
+    for model in template_models:
+        checking = Record.objects.filter(
+            uploaded_file__account__isnull=False, 
+            amount=-model['amount'], 
+            transaction_date__gt=(model['date'] - timedelta(days=5)),
+            transaction_date__lt=(model['date'] + timedelta(days=5))
+        )
+        if len(checking) > 0:        
+            model['assoc_date'] = checking[0].transaction_date
+            model['assoc_account'] = checking[0].uploaded_file.account.name
+            model['assoc_description'] = checking[0].description
+            model['assoc_extra_fields'] = checking[0].extra_fields            
+            model['assoc_amount'] = checking[0].amount
+            model['assoc_record_id'] = checking[0].id             
+        
+    return render(request, "filters.html", {'template_models': template_models, 'record_types': Record.RECORD_TYPES})
+
+def update_record_type(request, tenant_id, record_id):
+
+    response = {'success': False, 'message': '', 'data': {}}
+    try:
+        record = Record.objects.get(pk=record_id)
+        assoc_record = None 
+
+        assoc_id = request.POST['assoc_id']
+        if assoc_id:
+            assoc_record = Record.objects.get(pk=request.POST['assoc_id'])
+        record_type = request.POST['record_type']
+
+        if record_type == Record.RECORD_TYPE_INTERNAL and not assoc_record:
+            response['message'] = f'Both records could not be found'
+        else:
+
+            if record:   
+                record.record_type = record_type
+                record.save()
+
+            if assoc_record:         
+                assoc_record.record_type = record_type 
+                assoc_record.save()
+
+                response['message'] = f'Records {record.id} and {assoc_record.id} updated to {record_type}'
+            else:
+                response['message'] = f'Record {record.id} updated to {record.record_type}'
+            
+            response['success'] = True 
+                
+    except:
+        response['message'] = f'{sys.exc_info()[0]}: {sys.exc_info()[1]}'
+
+    return JsonResponse(response)
+
 def records(request, tenant_id):
     
-    hide_accounted = False 
-    full_path = request.get_full_path()
-    if '?' in full_path:
-        querystring = { e.split('=')[0]: e.split('=')[1] for e in full_path.split('?')[1].split('&') }
-        if 'hide_accounted' in querystring:
-            hide_accounted = str(querystring['hide_accounted']) == "1"
-    
-    record_rules = RecordGrouper.get_record_rule_index()
+    hide_accounted = get_querystring(request, 'hide_accounted') == "1"    
+    hide_internal = get_querystring(request, 'hide_internal') == "1"
 
-    record_sort = '-transaction_date'
+    record_sort = get_querystring(request, 'sort', '-transaction_date')
 
-    if request.method == "POST":
-        record_sort = request.POST['record_sort'] if 'record_sort' in request.POST else '-date' 
+    # if request.method == "POST":
+    #     record_sort = request.POST['record_sort'] if 'record_sort' in request.POST else '-date' 
 
     records_by_account = [ { 
         'obj': a, 
-        'records': Record.objects.filter(uploaded_file__account=a).order_by('-post_date') 
+        'records': Record.objects.filter(uploaded_file__account=a)
     } for a in Account.objects.all() ]
 
     records_by_creditcard = [ {
         'obj': c, 
-        'records': Record.objects.filter(uploaded_file__creditcard=c).order_by('-post_date') 
+        'records': Record.objects.filter(uploaded_file__creditcard=c)
     } for c in CreditCard.objects.all() ]
 
-    if hide_accounted:
-        for a in records_by_account:
+    record_rules = RecordGrouper.get_record_rule_index()
+
+    # -- post processing 
+    for a in records_by_account:
+        if hide_internal:
+            a['records'] = a['records'].exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+        a['records'] = a['records'].order_by(record_sort)
+        if hide_accounted:
             a['records'] = [ r for r in a['records'] if str(r.id) not in record_rules ]
-        for c in records_by_creditcard:
+    
+    for c in records_by_creditcard:
+        if hide_internal:
+            c['records'] = c['records'].exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+        c['records'] = c['records'].order_by(record_sort)
+        if hide_accounted:
             c['records'] = [ r for r in c['records'] if str(r.id) not in record_rules ]
-
+    
     show_record_columns = ['id', 'transaction_date', 'description', 'amount', 'extra_fields', 'type']
-
+    
     template_data = {
         'hide_accounted': hide_accounted,
+        'hide_internal': hide_internal,
         'record_rules': record_rules,
         'records_by_account': records_by_account,
         'records_by_creditcard': records_by_creditcard,

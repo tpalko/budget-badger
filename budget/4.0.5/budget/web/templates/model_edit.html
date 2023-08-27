@@ -3,7 +3,7 @@
 
 {% block content %}
 
-<h2>{{ model_name }} Edit</h2>
+<h2>{{ model_name }} {% if form.id.value %}edit{{ form.id.value }}{% else %}create{% endif %}</h2>
 
 <form method="post">
     {% csrf_token %}

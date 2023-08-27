@@ -463,6 +463,30 @@ class UploadedFile(BaseModel):
 class Record(BaseModel):
     '''A normalized representation of a single historical transaction'''
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['description']),
+        ]
+
+    # -- income, refunds, any amount from an external source to the system 
+    RECORD_TYPE_UNKNOWN = 'unknown'
+    RECORD_TYPE_REFUND = 'refund'
+    RECORD_TYPE_INCOME = 'income'
+    # -- spending, payments, any amount to an external source from the system 
+    RECORD_TYPE_EXPENSE = 'expense'
+    RECORD_TYPE_PENALTY = 'penalty'
+    # -- transfers, amount staying within the system 
+    RECORD_TYPE_INTERNAL = 'internal'
+
+    RECORD_TYPES = [
+        RECORD_TYPE_UNKNOWN,
+        RECORD_TYPE_REFUND,
+        RECORD_TYPE_INCOME,
+        RECORD_TYPE_EXPENSE,
+        RECORD_TYPE_PENALTY,
+        RECORD_TYPE_INTERNAL    
+    ]
+
     # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
     uploaded_file = models.ForeignKey(to=UploadedFile, related_name='records', on_delete=models.RESTRICT)    
     # transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
@@ -471,6 +495,7 @@ class Record(BaseModel):
     post_date = models.DateField(null=True)
     description = models.CharField(max_length=255, blank=True, null=True)
     amount = models.DecimalField(decimal_places=2, max_digits=20)    
+    record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)    
     extra_fields = models.JSONField(null=True)
 
     # def __init__(self, *args, **kwargs):

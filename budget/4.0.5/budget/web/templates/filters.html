@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Filter Management</h2>
+<h4>Showing <strong>{{ template_models|length }}</strong> records</h4>
+<table class="clicky-table">
+    {% for payment in template_models %}
+    <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <td>{{ payment.date }}</td>
+        <td>{{ payment.account }}</td>
+        <td title="{{ payment.extra_fields }}">{{ payment.description }}</td>
+        <td>{{ payment.amount }}</td>
+        <td>{{ payment.assoc_date }}</td>
+        <td>{{ payment.assoc_account }}</td>
+        <td title="{{ payment.assoc_extra_fields }}">{{ payment.assoc_description }}</td>        
+        <td>{{ payment.assoc_amount }}</td>
+        <td>
+            <form method="POST" id="form-recordtype-{{ payment.id }}" action="{% url "update_record_type" tenant_id=1 record_id=payment.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="assoc_id" value="{{ payment.assoc_record_id }}" />
+                <select data-recordid="{{ payment.id }}" name="record_type">
+                {% for k in record_types %}
+                    <option value="{{ k }}" {% if k == payment.record_type %}selected{% endif %}>{{ k }}</option>
+                {% endfor %}
+                </select>
+            </form>
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}
+
+
+{% block script %}
+
+<script language="javascript">
+
+    function handleRecordTypeResponse(response) {
+        if (response.success) {
+            addErrorMessage(response.message)
+        }
+    }
+
+    function handleRecordTypeSelect(e) {
+        
+        e.preventDefault();
+        
+        record_id = e.target.dataset.recordid;
+
+        var form = document.querySelector("form#form-recordtype-" + record_id);
+        var data = new FormData(form);
+
+        var options = {
+            method: form.method,
+            body: new FormData(form)
+        }
+
+        fetch(form.action, options)
+            .then((response) => {
+                var responsej = response.json();                
+                return responsej;
+            })
+            .then(handleRecordTypeResponse)
+            .catch((error) => {
+                addErrorMessage(error);
+                console.error(error);
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll("select[name='record_type']").forEach(( e, i ) => {
+            e.addEventListener('change', handleRecordTypeSelect);  
+        });
+    });
+
+</script>
+
+{% endblock %}

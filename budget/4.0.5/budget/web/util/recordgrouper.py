@@ -513,16 +513,8 @@ class RecordGrouper(object):
         
         while True:
             
-            records = Record.objects.all()
+            records = Record.objects.exclude(record_type=Record.RECORD_TYPE_INTERNAL)
             
-            if False:
-                records = records.filter(
-                    ~Q(extra_fields__type="TRANSFER") \
-                    & ~Q(extra_fields__type="ONLINE TRANSFER") \
-                    & ~Q(extra_fields__type="ONLINE BANKING TRANSFER") \
-                    & ~Q(extra_fields__type="CHECK") \
-                )
-
             # logger.warning(f'{len(records)} records')
             # total_amount = sum([ r.amount for r in records ])
 

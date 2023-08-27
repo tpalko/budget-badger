@@ -13,6 +13,7 @@
             <tr>
                 <th>Name</th>
                 <th>CSV Columns</th>
+                <th>Flow</th>
                 <th>CSV Date Format</th>
                 <th></th>
             </tr>
@@ -21,6 +22,7 @@
         <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
             <td>{{ recordformat.name }}</td>
             <td title="{{ recordformat.csv_columns }}">{{ recordformat.csv_columns|truncatechars:100 }}</td>
+            <td>{{ recordformat.flow_convention }}</td>
             <td>{{ recordformat.csv_date_format }}</td>
             <td>
                 <a href="{% url "model_edit" model_name="recordformat" tenant_id=1 model_id=recordformat.id %}">edit</a>
@@ -34,7 +36,7 @@
 
 <h2>Account Management</h2>
 
-<a href="{% url "model_edit" tenant_id=1 %}">new account</a>
+<a href="{% url "model_edit" tenant_id=1 model_name="account" %}">new account</a>
 
 <div class="row">
     <div class="col-16">

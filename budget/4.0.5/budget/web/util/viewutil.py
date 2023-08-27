@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 def transaction_type_display(transaction_type):
     return [ choice_tuple[1] for choice_tuple in TransactionTypes.transaction_type_choices if choice_tuple[0] == transaction_type ][0]
 
+def get_querystring(request, key, default=""):
+    val = default
+    full_path = request.get_full_path()
+    if '?' in full_path:
+        querystring = { e.split('=')[0]: e.split('=')[1] for e in full_path.split('?')[1].split('&') }
+        if key in querystring:
+            val = querystring[key]
+    return val
+
 def _get_heatmap_region_lookup(heatmap):
                 
     heatmap_region_lookup = {}
