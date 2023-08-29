@@ -1,0 +1,48 @@
+{% load budget_tags %}
+
+<table class="clicky-table">
+    {% for record in records %} 
+        <tr title="record {{ record.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ record.date }}</td>
+            <td>{{ record.account }}</td>
+            <td title="{{ record.extra_fields }}">{{ record.description }}</td>
+            <td>{{ record.amount }}</td>
+            <td>
+                <form method="POST" id="form-recordtype-{{ record.id }}" action="{% url "update_record_type" tenant_id=1 record_id=record.id %}">
+                    {% csrf_token %}
+                    {% if record_type == "internal" or record_type == "unknown" %}
+                        <table>
+                            <tr>
+                                <th>date</th>
+                                <th>acct</th>
+                                <th>desc</th>
+                                <th>amt</th>
+                                <th>type</th>
+                                <th></th>
+                            </tr>
+                            <tr>
+                                <td colspan="5" class="missing-data">no associated record</td>                        
+                                <td><input type="radio"  value="" name="assoc_id" checked /></td>
+                            </tr>
+                            {% for assoc in record.assoc %}
+                            <tr title="assoc record {{assoc.id}}">
+                                <td>{{ assoc.date }}</td>
+                                <td>{{ assoc.account }}</td>
+                                <td title="{{ assoc.extra_fields }}">{% if assoc.description %}{{ assoc.description }}{% else %}<span class="missing-data">no data</span>{% endif %}</td>        
+                                <td>{{ assoc.amount }}</td>
+                                <td>{{ assoc.meta_record_type }}</td>
+                                <td><input type="radio"  value="{{ assoc.id }}" name="assoc_id" /></td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    {% endif %}
+                    <select data-recordid="{{ record.id }}" name="record_type">                    
+                    {% for k in record_types %}
+                        <option value="{{ k }}" {% if k == record.meta_record_type %}selected{% endif %}>{{ k }}</option>
+                    {% endfor %}
+                    </select>
+                </form>
+            </td>   
+        </tr>
+    {% endfor %}
+</table>

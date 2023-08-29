@@ -513,7 +513,7 @@ class RecordGrouper(object):
         
         while True:
             
-            records = Record.objects.exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+            records = Record.objects.exclude_type(record_type=Record.RECORD_TYPE_INTERNAL)
             
             # logger.warning(f'{len(records)} records')
             # total_amount = sum([ r.amount for r in records ])

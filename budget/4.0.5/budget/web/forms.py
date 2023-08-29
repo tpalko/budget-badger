@@ -132,7 +132,7 @@ class RecordForm(ModelForm):
         # -- but it's conceivable that two transactions in that CSV match all fields 
         # -- however, if a match is found under a different file, 
         # -- it's likely this CSV download overlaps with a previous CSV download 
-        matches = Record.objects.filter(
+        overlapping_records = Record.objects.filter(
             ~Q(uploaded_file=self.cleaned_data['uploaded_file']),
             transaction_date=self.cleaned_data['transaction_date'] if 'transaction_date' in self.cleaned_data else None, 
             description=self.cleaned_data['description'] if 'description' in self.cleaned_data else None, 
@@ -145,9 +145,13 @@ class RecordForm(ModelForm):
         #     debits=self.cleaned_data['debits'] if 'debits' in self.cleaned_data else None
         # )
 
-        if len(matches) > 0:
-            raise ValidationError(_(f'RecordForm.is_valid: Another record(s) {",".join([ str(m.id) for m in matches ])} for a different upload (them:{",".join([ str(m.uploaded_file_id) for m in matches ])}, us:{self.cleaned_data["uploaded_file_id"] if "uploaded_file_id" in self.cleaned_data else self.cleaned_data["uploaded_file"]}) matching all fields already exists in the database.'))
+        if len(overlapping_records) > 0:
+            raise ValidationError(_(f'RecordForm.is_valid: Another record(s) {",".join([ str(m.id) for m in overlapping_records ])} for a different upload (them:{",".join([ str(m.uploaded_file_id) for m in matches ])}, us:{self.cleaned_data["uploaded_file_id"] if "uploaded_file_id" in self.cleaned_data else self.cleaned_data["uploaded_file"]}) matching all fields already exists in the database.'))
         
+        # -- the following python and mariadb techniques, respectively, (can) result in the same output 
+        # hashlib.md5(json.dumps(r.extra_fields, ensure_ascii=True, sort_keys=True).encode('utf-8')).hexdigest() 
+        # md5(extra_fields)
+
         return True
 
 class UploadedFileForm(ModelForm):

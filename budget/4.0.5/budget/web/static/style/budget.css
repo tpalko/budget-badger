@@ -49,6 +49,11 @@ body.dark {
 	border: 1px solid red;
 }
 
+.missing-data {
+	font-style: italic;
+	color: #666;
+}
+
 .content {
 	margin: 87px 0 0 10px;  /* header height + padding + 10px */
 }

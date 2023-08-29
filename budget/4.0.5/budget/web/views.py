@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect
-from django.db.models import Q
+from django.db.models import Q, OuterRef
 from django.core.exceptions import ValidationError
 from django.views.decorators.http import require_http_methods
 from django.template.loader import render_to_string
@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import logging
 import traceback
 from web.forms import new_transaction_rule_form_set, form_types, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
+from web.models import records_from_rules, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
@@ -407,82 +407,111 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
 
 def filters(request, tenant_id):
 
-    records = Record.objects.filter(
-        Q(Q(uploaded_file__creditcard__isnull=False) | Q(uploaded_file__account__isnull=False, description__regex=r"FROM|TO.+CHECKING|SAVINGS")) & Q(amount__gt=0, record_type=Record.RECORD_TYPE_UNKNOWN)
-    ).order_by('-transaction_date')
+    records_by_type = {}
 
-    # cc_payments = Record.objects.filter(
-    #     uploaded_file__creditcard__isnull=False, 
-    #     amount__gt=0            
-    # )
-    # cc_payments = cc_payments.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
+    for record_type in Record.RECORD_TYPES:
+            
+        records = Record.objects.filter(meta_record_type=record_type).filter(
+            Q(
+                Q(uploaded_file__creditcard__isnull=False) \
+                    | Q(
+                        Q(uploaded_file__account__isnull=False) \
+                            & (
+                                Q(description__regex=r"Interest Payment") | \
+                                    Q(description__regex=r"Internet transfer from") | \
+                                    Q(description__regex=r"FROM|TO.+CHECKING|SAVINGS")
+                            )
+                    )
+            )
+            & Q(amount__gt=0)
+        ).order_by('-transaction_date')
 
-    # bank_transfers = Record.objects.filter(
-    #     uploaded_file__account__isnull=False, 
-    #     description__regex=r"FROM|TO.+CHECKING|SAVINGS", 
-    #     amount__gt=0
-    # )
-    # bank_transfers = bank_transfers.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
+        # cc_payments = Record.objects.filter(
+        #     uploaded_file__creditcard__isnull=False, 
+        #     amount__gt=0            
+        # )
+        # cc_payments = cc_payments.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
 
-    template_models = [ {
-        'id': p.id,
-        'date': p.transaction_date, 
-        'account': p.uploaded_file.account_name,
-        'amount': p.amount,
-        'description': p.description,
-        'record_type': p.record_type,
-        'extra_fields': p.extra_fields        
-    } for p in records ]
+        # bank_transfers = Record.objects.filter(
+        #     uploaded_file__account__isnull=False, 
+        #     description__regex=r"FROM|TO.+CHECKING|SAVINGS", 
+        #     amount__gt=0
+        # )
+        # bank_transfers = bank_transfers.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
 
-    for model in template_models:
-        checking = Record.objects.filter(
-            uploaded_file__account__isnull=False, 
-            amount=-model['amount'], 
-            transaction_date__gt=(model['date'] - timedelta(days=5)),
-            transaction_date__lt=(model['date'] + timedelta(days=5))
-        )
-        if len(checking) > 0:        
-            model['assoc_date'] = checking[0].transaction_date
-            model['assoc_account'] = checking[0].uploaded_file.account.name
-            model['assoc_description'] = checking[0].description
-            model['assoc_extra_fields'] = checking[0].extra_fields            
-            model['assoc_amount'] = checking[0].amount
-            model['assoc_record_id'] = checking[0].id             
+        template_models = [ {
+            'id': p.id,
+            'date': p.transaction_date, 
+            'account': p.uploaded_file.account_name,
+            'amount': p.amount,
+            'description': p.description,
+            'meta_record_type': p.meta_record_type,
+            'extra_fields': p.extra_fields,
+            'assoc': []     
+        } for p in records ]
+
+        if record_type in [Record.RECORD_TYPE_UNKNOWN, Record.RECORD_TYPE_INTERNAL]:
+            for model in template_models:
+                checking = Record.objects.filter(
+                    # uploaded_file__account__isnull=False, 
+                    amount=-model['amount'], 
+                    transaction_date__gt=(model['date'] - timedelta(days=5)),
+                    transaction_date__lt=(model['date'] + timedelta(days=5))
+                )
+                model['assoc'] = [ {
+                        'id': assoc.id,
+                        'date': assoc.transaction_date,
+                        'account': assoc.uploaded_file.account_name(),
+                        'description': assoc.description,
+                        'extra_fields': assoc.extra_fields,
+                        'amount': assoc.amount,
+                        'meta_record_type': assoc.meta_record_type,
+                        'record_id': assoc.id
+                    } for assoc in checking ]
         
-    return render(request, "filters.html", {'template_models': template_models, 'record_types': Record.RECORD_TYPES})
+        records_by_type[record_type] = template_models
+        
+    return render(request, "filters.html", {'records': records_by_type, 'template_models': template_models, 'record_types': Record.RECORD_TYPES})
 
 def update_record_type(request, tenant_id, record_id):
 
     response = {'success': False, 'message': '', 'data': {}}
     try:
         record = Record.objects.get(pk=record_id)
-        assoc_record = None 
+        record_meta = RecordMeta.objects.filter(extra_fields_hash=record.extra_fields_hash).first()
+        response['data']['original_record_type'] = record_meta.record_type 
 
-        assoc_id = request.POST['assoc_id']
-        if assoc_id:
-            assoc_record = Record.objects.get(pk=request.POST['assoc_id'])
+        assoc_record = None 
+        assoc_record_meta = None 
+
+        if 'assoc_id' in request.POST:
+            assoc_id = request.POST['assoc_id']
+            if assoc_id:
+                assoc_record = Record.objects.get(pk=request.POST['assoc_id'])
+                assoc_record_meta = RecordMeta.objects.filter(extra_fields_hash=assoc_record.extra_fields_hash).first()
+
         record_type = request.POST['record_type']
 
-        if record_type == Record.RECORD_TYPE_INTERNAL and not assoc_record:
+        if record_type == Record.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
             response['message'] = f'Both records could not be found'
         else:
 
-            if record:   
-                record.record_type = record_type
-                record.save()
+            if record_meta:   
+                record_meta.record_type = record_type
+                record_meta.save()
 
-            if assoc_record:         
-                assoc_record.record_type = record_type 
-                assoc_record.save()
+            if assoc_record_meta:         
+                assoc_record_meta.record_type = record_type 
+                assoc_record_meta.save()
 
-                response['message'] = f'Records {record.id} and {assoc_record.id} updated to {record_type}'
+                response['message'] = f'Records {record.id} and {assoc_record.id} meta ({record_meta.id}, {assoc_record_meta.id}) updated to {record_type}'
             else:
-                response['message'] = f'Record {record.id} updated to {record.record_type}'
+                response['message'] = f'Record {record.id} meta ({record_meta.id}) updated to {record_type}'
             
             response['success'] = True 
                 
     except:
-        response['message'] = f'{sys.exc_info()[0]}: {sys.exc_info()[1]}'
+        response['message'] = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
 
     return JsonResponse(response)
 
@@ -511,14 +540,14 @@ def records(request, tenant_id):
     # -- post processing 
     for a in records_by_account:
         if hide_internal:
-            a['records'] = a['records'].exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+            a['records'] = a['records'].exclude_type(record_type=Record.RECORD_TYPE_INTERNAL)
         a['records'] = a['records'].order_by(record_sort)
         if hide_accounted:
             a['records'] = [ r for r in a['records'] if str(r.id) not in record_rules ]
     
     for c in records_by_creditcard:
         if hide_internal:
-            c['records'] = c['records'].exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+            c['records'] = c['records'].exclude_type(record_type=Record.RECORD_TYPE_INTERNAL)
         c['records'] = c['records'].order_by(record_sort)
         if hide_accounted:
             c['records'] = [ r for r in c['records'] if str(r.id) not in record_rules ]

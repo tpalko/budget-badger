@@ -89,7 +89,7 @@ function initTabs() {
 				})
 	
 				document.querySelectorAll("div[id^=" + tabsId + "-]").forEach((contentEl, i) => {
-					var replaceStr = /tabs-records-/
+					var replaceStr = tabsId + "-"
 					var contentId = contentEl.getAttribute('id').replace(replaceStr, "");
 					if(contentId != clickedId) {
 						contentEl.classList.add('hidden');
@@ -109,7 +109,7 @@ function initTabs() {
 }
 
 function clickyTableClick(e) {
-	e.preventDefault();
+	
 	if (e.target.dataset.clickyrow) {
 		document.querySelector("tr#" + e.target.dataset.clickyrow).classList.add("selected");
 	}	

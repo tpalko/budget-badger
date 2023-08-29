@@ -4,32 +4,20 @@
 {% block content %}
 
 <h2>Filter Management</h2>
-<h4>Showing <strong>{{ template_models|length }}</strong> records</h4>
-<table class="clicky-table">
-    {% for payment in template_models %}
-    <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
-        <td>{{ payment.date }}</td>
-        <td>{{ payment.account }}</td>
-        <td title="{{ payment.extra_fields }}">{{ payment.description }}</td>
-        <td>{{ payment.amount }}</td>
-        <td>{{ payment.assoc_date }}</td>
-        <td>{{ payment.assoc_account }}</td>
-        <td title="{{ payment.assoc_extra_fields }}">{{ payment.assoc_description }}</td>        
-        <td>{{ payment.assoc_amount }}</td>
-        <td>
-            <form method="POST" id="form-recordtype-{{ payment.id }}" action="{% url "update_record_type" tenant_id=1 record_id=payment.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="assoc_id" value="{{ payment.assoc_record_id }}" />
-                <select data-recordid="{{ payment.id }}" name="record_type">
-                {% for k in record_types %}
-                    <option value="{{ k }}" {% if k == payment.record_type %}selected{% endif %}>{{ k }}</option>
-                {% endfor %}
-                </select>
-            </form>
-        </td>
-    </tr>
+
+<ul id="tabs-recordtypes" class="tabs">
+    {% for record_type in record_types %} 
+        <li id="record_type-{{ record_type }}">{{ record_type }} ({{ records|lookup:record_type|length }})</li>
     {% endfor %}
-</table>
+</ul>
+
+{% for record_type in record_types %} 
+    {% with records=records|lookup:record_type record_type=record_type %}
+    <div id="tabs-recordtypes-record_type-{{ record_type }}">
+        {% include "_record_types_table.html" %}
+    </div>
+    {% endwith %}
+{% endfor %}  
 
 {% endblock %}
 
@@ -37,12 +25,6 @@
 {% block script %}
 
 <script language="javascript">
-
-    function handleRecordTypeResponse(response) {
-        if (response.success) {
-            addErrorMessage(response.message)
-        }
-    }
 
     function handleRecordTypeSelect(e) {
         
@@ -55,15 +37,20 @@
 
         var options = {
             method: form.method,
-            body: new FormData(form)
+            body: data
         }
 
         fetch(form.action, options)
             .then((response) => {
-                var responsej = response.json();                
+                var responsej = response.json();
                 return responsej;
             })
-            .then(handleRecordTypeResponse)
+            .then((response) => {
+                addErrorMessage(response.message)
+                if (!response.success) {
+                    e.target.value = response.data.original_record_type;
+                }
+            })
             .catch((error) => {
                 addErrorMessage(error);
                 console.error(error);

@@ -1,5 +1,6 @@
 from django.db.models import Q, F
 from django.db import models
+from django.db.models import OuterRef
 from django.utils.translation import gettext_lazy as _
 from autoslug import AutoSlugField
 from django.core.exceptions import ValidationError
@@ -132,7 +133,7 @@ def records_from_rules(rule_logics, join_operator):
 
         qs = qs.order_by('-transaction_date')
     
-    qs = qs.exclude(record_type=Record.RECORD_TYPE_INTERNAL)
+    qs = qs.exclude(meta_record_type=Record.RECORD_TYPE_INTERNAL)
 
     return list(qs)
 
@@ -244,8 +245,6 @@ class TransactionRule(BaseModel):
 
     def filter(self):
         return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
-
-
 
 class ProtoTransaction(BaseModel):
     '''A transitional object between a rule set -- a logical grouping of records, and a full-on transaction -- a budgetable spending abstraction'''
@@ -502,9 +501,27 @@ class UploadedFile(BaseModel):
 # class RecordGroup(BaseModel):
 #     name = models.CharField(max_length=255)
 #     stats = models.JSONField(null=True)
-    
+
+class RecordTypeManager(models.Manager):
+
+    def get_queryset(self):
+        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
+        return super().get_queryset().annotate(meta_record_type=meta_join.values('record_type'))
+
+    def filter_type(self, record_type):
+        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
+        records = self.annotate(meta_record_type=meta_join.values('record_type'))
+        return records.filter(meta_record_type=record_type)
+
+    def exclude_type(self, record_type):
+        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
+        records = self.annotate(meta_record_type=meta_join.values('record_type'))
+        return records.exclude(meta_record_type=record_type)
+
 class Record(BaseModel):
     '''A normalized representation of a single historical transaction'''
+
+    objects = RecordTypeManager()
 
     class Meta:
         indexes = [
@@ -538,9 +555,14 @@ class Record(BaseModel):
     post_date = models.DateField(null=True)
     description = models.CharField(max_length=255, blank=True, null=True)
     amount = models.DecimalField(decimal_places=2, max_digits=20)    
-    record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)    
+    record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)        
     extra_fields = models.JSONField(null=True)
-
+    extra_fields_hash = models.CharField(max_length=32, null=True)
+    
+    '''
+    select transaction_date, description, amount, count(*) from web_record group by transaction_date, description, amount order by count(*);
+    select transaction_date, description, amount, md5(extra_fields) as extra_fields_hash, count(*) from web_record group by transaction_date, description, amount, extra_fields_hash order by count(*);
+    '''
     # def __init__(self, *args, **kwargs):
     #     super(Record, self).__init__(*args, **kwargs)
         # if self.uploaded_file_id:
@@ -549,7 +571,17 @@ class Record(BaseModel):
     def __str__(self):
         return f'{self.id}, {self.uploaded_file.account or self.uploaded_file.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
 
-    # def save(self, *args, **kwargs):        
+    def save(self, *args, **kwargs):
+        
+        if self.extra_fields is None:
+            self.extra_fields = {}
+        self.extra_fields_hash = hashlib.md5(json.dumps(self.extra_fields, sort_keys=True, ensure_ascii=True).encode('utf-8')).hexdigest()
+        logger.info(f'record saving with hash {self.extra_fields_hash}: {args}')
+
+        logger.info(f'Record -- pre super')
+        super(Record, self).save(*args, **kwargs)
+        logger.info(f'Record -- post super')
+
     #     self.clean()
     #     matches = Record.objects.filter(
     #         ~Q(uploaded_file=self.uploaded_file),
@@ -559,7 +591,16 @@ class Record(BaseModel):
     #     )
     #     if len(matches) > 0:
     #         raise ValidationError(_(f'Record.save: Another record(s) {",".join([ str(m.id) for m in matches ])} for a different upload (them:{",".join([ str(m.uploaded_file.id) for m in matches ])}, us:{self.uploaded_file.id}) matching all fields already exists in the database.'))
-    #     super(Record, self).save(*args, **kwargs)
+        
+
+class RecordMeta(BaseModel):
+    extra_fields_hash = models.CharField(max_length=32, null=True)
+    record_type = models.CharField(max_length=15, null=False, choices=choiceify(Record.RECORD_TYPES), default=Record.RECORD_TYPE_UNKNOWN)        
+
+MANAGER_METHOD_LOOKUP = {
+    TransactionRule.INCLUSION_FILTER: Record.objects.filter,
+    TransactionRule.INCLUSION_EXCLUDE: Record.objects.exclude,
+}
 
 class TransactionTag(BaseModel):
 
