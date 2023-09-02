@@ -116,7 +116,7 @@ def get_heatmap_data(filtered_records):
 
 def ruleset_stats(rulesets):
     
-    total_amount = sum([ transactionruleset.prototransaction.stats['monthly_amount'] for transactionruleset in rulesets ])
+    total_amount = sum([ transactionruleset.prototransaction_safe().stats['monthly_amount'] for transactionruleset in rulesets if transactionruleset.prototransaction_safe() ])
     total_records = sum([ len(transactionruleset.records()) for transactionruleset in rulesets ])
 
     return {

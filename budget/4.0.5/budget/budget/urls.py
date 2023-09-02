@@ -20,6 +20,7 @@ from web import views
 urlpatterns = [
     path(r'', views.home, name="home"),
     #path(r'^transaction/', views.transaction_new, name="transaction_new"),    
+    re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/auto/', views.transactionrulesets_auto, name="transactionrulesets_auto"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/(?P<transactionruleset_id>[0-9]+)/', views.transactionrulesets_list, name="transactionrulesets_list"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/', views.transactionrulesets_list, name="transactionrulesets_list"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionruleset/(?P<transactionruleset_id>[0-9]+)/', views.transactionruleset_edit, name="transactionruleset_edit"),
@@ -35,7 +36,8 @@ urlpatterns = [
     re_path(r'account/(?P<tenant_id>[0-9]+)/filters/', views.filters, name="filters"),        
     re_path(r'account/(?P<tenant_id>[0-9]+)/record/(?P<record_id>[0-9]+)/type', views.update_record_type, name="update_record_type"),        
     re_path(r'account/(?P<tenant_id>[0-9]+)/records/delete/(?P<uploadedfile_id>[0-9]+)/', views.delete_uploadedfile, name="delete_uploadedfile"),
-    re_path(r'account/(?P<tenant_id>[0-9]+)/records/regroup/', views.regroup_records, name="regroup_records"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/records/auto/regroup/', views.regroup_auto_records, name="regroup_auto_records"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/records/manual/regroup/', views.regroup_manual_records, name="regroup_manual_records"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/records/', views.records, name='records'),
     # re_path(r'account/(?P<tenant_id>[0-9]+)/transaction/bulk/', views.transaction_bulk, name="transaction_bulk"),
     # re_path(r'account/(?P<tenant_id>[0-9]+)/transaction/', views.transaction_new_from_records, name="transaction_new_from_records"),
@@ -49,5 +51,6 @@ urlpatterns = [
     re_path(r'account/(?P<tenant_id>[0-9]+)/run_projections/', views.run_projections, name="run_projections"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/(?P<model_name>[a-z]+)/(?P<model_id>[0-9]+)/', views.model_edit, name="model_edit"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/(?P<model_name>[a-z]+)/', views.model_edit, name="model_edit"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/', views.account_home, name="account_home"),
     path('admin/', admin.site.urls),
 ]

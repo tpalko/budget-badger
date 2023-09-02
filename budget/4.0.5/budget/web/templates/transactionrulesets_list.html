@@ -15,21 +15,12 @@
     <div class="col-16">
         
         <h3>Showing {{ transactionrulesets_manual|length }} manual rule sets</h3>
-        <a class="button" href="{% url "regroup_records" tenant_id=1 %}">Regroup Records</a>        
+        <a class="button" href="{% url "regroup_manual_records" tenant_id=1 %}">Regroup Records</a>        
 
         {% include "transactionrulesets_list_table.html" with table=transactionrulesets_manual stats=manual_stats %}
 
     </div>    
 </div>
-<div class="row">
-     <div class="col-16">
-        
-        <h3>Showing {{ transactionrulesets_auto|length }} auto rule sets</h3>
-        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_auto stats=auto_stats %}
-
-    </div>    
-</div>
-
 
 {% endblock %}
 

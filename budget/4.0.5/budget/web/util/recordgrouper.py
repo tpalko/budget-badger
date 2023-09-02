@@ -2,17 +2,22 @@
 
 from decimal import InvalidOperation
 import sys 
+import math
 import os 
 import traceback 
 
 from django.db.models import Q
+
+
 import django
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'budget.settings_dev'
 django.setup()
 
+from django.conf import settings 
+
 import json
-from web.models import Record, TransactionRuleSet, ProtoTransaction, TransactionRule
+from web.models import Record, RecordMeta, TransactionRuleSet, ProtoTransaction, TransactionRule
 from web.util.modelutil import TransactionTypes
 import web.util.dates as utildates
 from datetime import datetime, timedelta
@@ -20,6 +25,43 @@ import numpy as np
 import logging 
 
 logger = logging.getLogger(__name__)
+stats_logger = logging.getLogger('stats')
+
+_rule_index_cache = {}
+
+def get_rule_index_cache_key(lt_priority=None, is_auto=None):
+    is_auto_key = 'any'
+    if is_auto:
+        is_auto_key = 'true'
+    elif is_auto is not None and not is_auto:
+        is_auto_key = 'false'
+    
+    priority_key = 'any'
+    if lt_priority is not None:
+        priority_key = lt_priority 
+
+    return f'priority-{priority_key}-auto-{is_auto_key}'
+
+def parse_rule_index_cache_key(key):
+    parts = key.split('-')
+    priority = parts[1]
+    is_auto = parts[3]
+    if priority == 'any':
+        priority = None 
+    if is_auto == 'any':
+        is_auto = None 
+    else:
+        is_auto = True if is_auto == 'true' else False         
+    return { 'less_than_priority': priority, 'is_auto': is_auto }
+
+def get_rule_index(lt_priority, is_auto, refresh_cache=False, refresh_records=False):
+    key = get_rule_index_cache_key(lt_priority=lt_priority, is_auto=is_auto)
+    if key not in _rule_index_cache or refresh_cache:        
+        logger.debug(f'CACHE MISS or REFRESH')
+        _rule_index_cache[key] = RecordGrouper.get_record_rule_index(less_than_priority=lt_priority, is_auto=is_auto, refresh_records=refresh_records)
+    else:
+        logger.debug(f'CACHE HIT')
+    return _rule_index_cache[key]
 
 class RecordGrouper(object):
     
@@ -115,7 +157,7 @@ class RecordGrouper(object):
     @staticmethod 
     def _get_recency_weights(time_sorted_records):
         now = datetime.now()
-        relevance_timer = timedelta(days=1000).total_seconds()
+        relevance_timer = timedelta(days=settings.CONFIG.INACTIVE_DAYS).total_seconds()
         # -- build list of weights corresponding to records, from 1 (now) to zero (relevance_timer ago)
         weights = [ (relevance_timer - (now.date() - r.transaction_date).total_seconds()) / relevance_timer for r in time_sorted_records ]
         # -- no negatives
@@ -123,6 +165,16 @@ class RecordGrouper(object):
         weights = [ w if w>=0 else 0 for w in weights ]
         # logger.warning(f'timing weights: {weights}')
         return weights 
+
+    @staticmethod 
+    def _get_values_in_winning_bin(values, weights):
+        hist, bins = np.histogram(values, weights=weights)
+        low = bins[hist.argmax()]
+        high = bins[hist.argmax() + 1]
+
+        stats_logger.debug(f'low: {low} high: {high}')
+
+        return [ a for a in values if a >= low and a <= high ]
 
     @staticmethod
     def _get_timings(records):
@@ -148,11 +200,26 @@ class RecordGrouper(object):
         # dates = sorted([ int(datetime.strftime(d, '%d')) for d in dates if datetime.now().date() - d < timedelta(days=90) ])
         now = datetime.now()
 
+        '''
+        -70
+            20
+        -50
+            10
+        -40
+            10
+        -30
+            10
+        -20
+            10
+        -10
+        '''
         recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=False)
-        recent_dates = np.array([ r.transaction_date for r in recent_records ])
-        recent_dates_from_now = [ now.date() ]
-        recent_dates_from_now.extend(recent_dates)
+        recent_dates = [ r.transaction_date for r in recent_records ]
+        recent_dates_from_now = np.array(recent_dates)
+        # recent_dates_from_now.extend(recent_dates)
+        stats_logger.debug(f'recent dates: {recent_dates_from_now}')
         recent_dates_gaps = [ g.total_seconds()/(60*60*24) for g in np.diff(recent_dates_from_now) ]
+        stats_logger.debug(f'recent dates gaps: {recent_dates_gaps}')
 
         avg_gap = np.average(recent_dates_gaps)
         
@@ -160,11 +227,13 @@ class RecordGrouper(object):
         # -- build list of weights corresponding to records, from 1 (now) to zero (relevance_timer ago)
         # weights = [ (relevance_timer - (now.date() - r.transaction_date).total_seconds()) / relevance_timer for r in recent_records ]
         # -- no negatives
-        # logger.warning(f'timing weights: {weights}')
+        # stats_logger.warning(f'timing weights: {weights}')
         # weights = [ w if w>=0 else 0 for w in weights ]
-        # logger.warning(f'timing weights: {weights}')
+        # stats_logger.warning(f'timing weights: {weights}')
 
         weights = RecordGrouper._get_recency_weights(recent_records)
+
+        stats_logger.debug(f'weights: {weights}')
 
         is_active = False 
         high_period = None 
@@ -176,17 +245,13 @@ class RecordGrouper(object):
         # -- if there's at least one nonzero weight 
         if not all([ w == 0 for w in weights ]):
 
-            hist, bins = np.histogram(recent_dates_gaps, weights=weights)
-
-            # -- find the edges of the winning bin, argmax is the index of the highest scoring bin, bins are the edges
-            low = bins[hist.argmax()]
-            high = bins[hist.argmax() + 1]
-
-            gaps_in_bin = [ a for a in recent_dates_gaps if a >= low and a <= high ]
+            gaps_in_bin = RecordGrouper._get_values_in_winning_bin(recent_dates_gaps, weights[0:-1])
 
             # -- get the max of all the amounts in the winning bin
             low_gap = min(gaps_in_bin or [0])
             high_gap = max(gaps_in_bin or [0])
+
+            stats_logger.debug(f'binned gaps: {gaps_in_bin} ({low_gap}/{high_gap})')
 
             low_period = RecordGrouper._get_period_for_gap(low_gap)
             high_period = RecordGrouper._get_period_for_gap(high_gap)
@@ -261,10 +326,14 @@ class RecordGrouper(object):
 
             monthly_spend = total_amount 
 
-            if len(recent_records) > 1 and of_month > 1:
-                monthly_spend = total_amount / of_month
-
-            logger.info(f'total: {total_amount} over {range_seconds} seconds')
+            if len(recent_records) > 1:
+                if of_month >= 3:
+                    monthly_spend = total_amount / of_month
+                elif of_month >= 1:
+                    pass 
+                    # -- default to total.. up to 2 months
+            
+            stats_logger.info(f'total: {total_amount} over {range_seconds} seconds')
         # -- fancy custom binning, but uncooperative distributions spoil it
         # amount_bins = np.split(sorted_amounts, np.where(np.diff(sorted_amounts) > np.average(sorted_amounts)*.1)[0]+1)
         # bin_edges = [ min(bin) for bin in amount_bins ]
@@ -284,14 +353,8 @@ class RecordGrouper(object):
 
         if not all([ w == 0 for w in weights ]):
             
-            hist, bins = np.histogram(recent_amounts, weights=weights)
-
-            # -- find the edges of the winning bin, argmax is the index of the highest scoring bin, bins are the edges
-            low = bins[hist.argmax()]
-            high = bins[hist.argmax() + 1]
-
             # -- get the max of all the amounts in the winning bin
-            recurring_amount = max([ a for a in recent_amounts if a >= low and a <= high ] or [0])
+            recurring_amount = max(RecordGrouper._get_values_in_winning_bin(recent_amounts, weights) or [0])
 
             is_active = True 
 
@@ -341,6 +404,45 @@ class RecordGrouper(object):
         return cat
     
     @staticmethod 
+    def get_meaningful_stats(records):
+        recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=False)
+        recent_records_dates = [ r.transaction_date for r in recent_records ]
+        recent_dates_np = np.array(recent_records_dates)
+        
+        recent_dates_gaps = [ g.total_seconds()/(60*60*24) for g in np.diff(recent_dates_np) ]
+        
+        weights = RecordGrouper._get_recency_weights(recent_records)
+        
+        timing_bins = [
+            0, # -- start of daily
+            5, # -- start of weekly
+            10, # -- start of bi-weekly
+            20, # -- start of monthly
+            40, # -- dead space between monthly and semi-annually
+            160, # -- start of semi-annually
+            200, # -- dead space between semi-annually and annually
+            300, # -- start of annually
+            400 
+        ]
+
+        hist, bins = np.histogram(recent_dates_gaps, bins=timing_bins) #, weights=weights[0:-1])
+
+        # nonzero_buckets = [ h for h in hist if h > 0 ]
+
+        dist = [ int(float(f'{n/sum(hist):.2f}')*100) for n in hist ]
+
+        # bucket_count_over_threshold = { 
+        #     t*10: [ b for b in dist if b >= t*10 and b < (t+1)*10 ]
+        #     for t in range(11) }
+
+        logger.debug(json.dumps([ datetime.strftime(d, "%Y-%m-%d") for d in recent_records_dates ], indent=2))
+        logger.debug(f'recent_dates_gaps {recent_dates_gaps}')
+        logger.debug(f'hist {hist}')
+        logger.debug(f'bins {bins}')
+        logger.debug(f'dist {dist}')
+        # logger.debug(json.dumps(bucket_count_over_threshold, indent=2))
+
+    @staticmethod 
     def get_stats(records):
 
         stats = {
@@ -378,8 +480,44 @@ class RecordGrouper(object):
 
         stats['transaction_type'] = RecordGrouper._guess_transaction_type(records)
         
+        '''
+        8/31/2023
+
+        timings and amounts are pretty closely related, they shouldn't be separated here
+        what we want to figure out from this set of records is
+        1. what amount, if any, can be reliably thought of in monthly terms
+        2. if not periodically at all, what is the timing?
+            a. periodic - a repeating charge at a regular pace
+            b. chaotic frequent - no identifiable period but frequent enough to have a monthly average
+            c. chaotic rare - no identifiable period and more often than not longer than 45 days between
+            d. single - one record
+        3. will it occur again, or is this spending/income in the past?
+
+        - find the gap distribution and fit it into a profile        
+            - one record = single
+            - 100% in one bucket = periodic
+            - between 30-50% in each of two buckets separated by at least one bucket, no more than 20% in any other
+                - OR >= 40% in one bucket and no more than 20% in at least one other separated by at least one bucket
+                - OR <= 20% in any bucket
+                - AND at least one every 30 days on average = chaotic frequent
+                - AND less than = chaotic rare
+        - answer #2 
+        - if periodic or chaotic frequent, find a monthly amount
+        - compare time since last record with the gap distribution and answer #3
+        - store appropriate values in prototransaction.stats
+            - first record at
+            - last record at
+            - record count
+            - some info about the gap distribution
+            - timing 
+            - is_active
+        
+        '''
+
         stats = { **stats, **RecordGrouper._get_timings(records) }
         stats = { **stats, **RecordGrouper._get_amount_stats(records) }
+
+        RecordGrouper.get_meaningful_stats(records)
         
         if len(records) > 0:
             descriptions = [ r.description or '' for r in records ]
@@ -412,6 +550,7 @@ class RecordGrouper(object):
 
         '''
 
+        stats_logger.debug(f'Stats returned: {json.dumps(stats, sort_keys=True, indent=2)}')
         return stats
 
     # @staticmethod
@@ -441,12 +580,13 @@ class RecordGrouper(object):
     #     return stats or recordgroup.stats
     
     @staticmethod
-    def filter_accounted_records(records, less_than_priority=None, is_auto=None, refresh=False):
-        rule_index = RecordGrouper.get_record_rule_index(less_than_priority=less_than_priority, is_auto=is_auto, refresh=refresh)
+    def filter_accounted_records(records, less_than_priority=None, is_auto=None, refresh_cache=False, refresh_records=False):
+        rule_index = get_rule_index(lt_priority=less_than_priority, is_auto=is_auto, refresh_cache=refresh_cache, refresh_records=refresh_records) #  RecordGrouper.get_record_rule_index(less_than_priority=less_than_priority, is_auto=is_auto, refresh=refresh)
         return [ r for r in records if str(r.id) not in rule_index ]
 
+
     @staticmethod 
-    def get_record_rule_index(less_than_priority=None, is_auto=None, refresh=False):
+    def get_record_rule_index(less_than_priority=None, is_auto=None, refresh_records=False):
         '''Creates an index of all records => # of TransactionRuleSets it appears in. Useful for weeding out records that have rule set
         attachments and for a quick "rules matched" lookup.'''
 
@@ -458,7 +598,7 @@ class RecordGrouper(object):
 
         # -- list of lists of record IDs for each rule set 
         # rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets ]
-        rule_set_ids = { trs.id: [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets }
+        rule_set_ids = { trs.id: [ r.id for r in trs.records(refresh=refresh_records) ] for trs in tx_rule_sets }
         # -- flatten and deduplicate list of lists 
         record_ids = set([ i for s in rule_set_ids.values() for i in s ])
         # -- mapping of record ID to the count of lists it's a part of
@@ -483,216 +623,254 @@ class RecordGrouper(object):
             is_modified_description = True 
         
     @staticmethod
-    def group_records(force_regroup_all=False):
+    def group_records(force_regroup_all=False, is_auto=None):
         '''Create and assign RecordGroups for distinct record descriptions'''
-        
+
         # -- MANUAL rule sets
 
-        manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False).order_by('priority')
-        for rule_set in manual_rule_sets:
-            logger.debug(f'recalculating stats for manual rule set {rule_set.name}')
-            records = rule_set.records(refresh=True)
-            records = RecordGrouper.filter_accounted_records(records, less_than_priority=rule_set.priority, is_auto=False, refresh=True)
-            stats = RecordGrouper.get_stats(records)
-            # stats = { k: stats[k] if stats[k] and stats[k] != "NaN" else 0 for k in stats.keys() }
-            # logger.debug(f'avg amount -- {stats["avg_amount"]}')
-            # logger.debug(f'stats for {rule_set.name}: {json.dumps(stats, indent=4)}')
-            # del stats['avg_amount']
-            proto_transaction = ProtoTransaction.objects.filter(transactionruleset=rule_set).first()
-            if proto_transaction:
-                proto_transaction.update_stats(stats)
-                proto_transaction.save()
-            else:
-                proto_transaction = ProtoTransaction.new_from(rule_set.name, stats, rule_set)
+        if is_auto is None or not is_auto:
+                
+            manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False).order_by('priority')
+            for rule_set in manual_rule_sets:
+                logger.debug(f'recalculating stats for manual rule set {rule_set.name} with priority {rule_set.priority}')
+                records = rule_set.records(refresh=True)
+                records = RecordGrouper.filter_accounted_records(
+                    records, 
+                    less_than_priority=rule_set.priority, 
+                    is_auto=False, 
+                    refresh_cache=False,
+                    refresh_records=False)
+                
+                stats = RecordGrouper.get_stats(records)
+                # stats = { k: stats[k] if stats[k] and stats[k] != "NaN" else 0 for k in stats.keys() }
+                # logger.debug(f'avg amount -- {stats["avg_amount"]}')
+                # logger.debug(f'stats for {rule_set.name}: {json.dumps(stats, indent=4)}')
+                # del stats['avg_amount']
+                proto_transaction = ProtoTransaction.objects.filter(transactionruleset=rule_set).first()
+                if proto_transaction:
+                    proto_transaction.update_stats(stats)
+                    proto_transaction.save()
+                else:
+                    proto_transaction = ProtoTransaction.new_from(rule_set.name, stats, rule_set)
+
+            logger.info(f'All done regrouping manual rule sets!')    
 
         # -- AUTO rule sets 
 
-        # -- by default this function will only process records without an assigned record group 
-        if force_regroup_all:
-            TransactionRuleSet.objects.filter(is_auto=True).delete()
-        
-        while True:
+        if is_auto is None or is_auto:
+                
+            # -- by default this function will only process records without an assigned record group 
+            if force_regroup_all:
+                TransactionRuleSet.objects.filter(is_auto=True).delete()
             
-            records = Record.objects.exclude_type(record_type=Record.RECORD_TYPE_INTERNAL)
-            
-            # logger.warning(f'{len(records)} records')
-            # total_amount = sum([ r.amount for r in records ])
+            true_loop = 1
 
-            # -- filter out records which are accounted for already by rules/rulesets 
-            # TODO: unfortunately, even though we remove records already accounted
-            # for in rule sets, this auto-grouping method may ultimately match those records 
-            # because we modify (shorten) the working description to find matches
-            # we can continue to limit these records below as they are found, but which 
-            # grouping should "win" and own a record? arguably the user groups (manual) should have 
-            # their own priority ranking and only allow any one record to be a part of one group
-            # and any records left over can live in multiple auto groups? however if we want to eventually
-            # elevate the auto groups and prototransactions to take part in forecasting/projection, a
-            # single group-per-record must be held everywhere 
-            records = RecordGrouper.filter_accounted_records(records, refresh=True)
-            # logger.warning(f'{len(records)} records')
-
-            # unaccounted_amount = sum([ r.amount for r in records ])
-
-            # -- 
-            reset_loop = False 
-
-            # -- this is a rough method to get initial groups together.. 
-            # -- maybe in a few cases another feature would be better 
-            # -- checks have no description, so maybe go for all checks first and group by amount
-            distinct_descriptions = set([ r.description or '' for r in records ])
-
-            for description in distinct_descriptions:
-
-                logger.info(f'\nTrying {description}')
-                # -- if we want to enable 'split accounts' again 
-                # -- this is what it consumes 
-                # account = {
-                #     '_count': len(desc_records),
-                #     '_records': sorted(desc_records, key=lambda r: r.date)
-                # }
-                # for subh in ['type', 'date', 'amount']:
-                #     account[subh] = [ r.__getattribute__(subh) for r in desc_records ]
+            while True:
                 
-                # desc_records = sorted([ r for r in records if description in [r.description, ''] ], key=lambda r: r.transaction_date)
-                # record_stats = RecordGrouper.get_stats(desc_records)
-
-                # proto_transaction = ProtoTransaction.objects.filter(name=description).first()
-
-                # if not proto_transaction:
+                records = Record.objects.exclude_type(record_type=RecordMeta.RECORD_TYPE_INTERNAL)
                 
-                '''
-                the idea here is:
-                    - make a rule set, placeholder for now
-                    - fetch records, perform stats on records, and if stats are sufficient, make a prototransaction
-                    - starting with `description = description`
-                    - and progressively truncating as `description contains [description minus one word]`
-                    - if nothing works, delete the placeholder rule set 
-                '''
-                transaction_rule_set = TransactionRuleSet.objects.create(
-                    name=description, 
-                    join_operator=TransactionRuleSet.JOIN_OPERATOR_AND, 
-                    is_auto=True
-                )
-                logger.info(f'Created rule set {transaction_rule_set.id}')
-                
-                match_operator = TransactionRule.MATCH_OPERATOR_EQUALS_HUMAN
-                match_value = description 
+                # logger.warning(f'{len(records)} records')
+                # total_amount = sum([ r.amount for r in records ])
 
-                proto_transaction = None 
-                
-                for is_modified_description, rule_attempt in RecordGrouper._prototransaction_rule_attempt(match_operator, match_value):
+                # -- filter out records which are accounted for already by rules/rulesets 
+                # TODO: unfortunately, even though we remove records already accounted
+                # for in rule sets, this auto-grouping method may ultimately match those records 
+                # because we modify (shorten) the working description to find matches
+                # we can continue to limit these records below as they are found, but which 
+                # grouping should "win" and own a record? arguably the user groups (manual) should have 
+                # their own priority ranking and only allow any one record to be a part of one group
+                # and any records left over can live in multiple auto groups? however if we want to eventually
+                # elevate the auto groups and prototransactions to take part in forecasting/projection, a
+                # single group-per-record must be held everywhere 
+                records = RecordGrouper.filter_accounted_records(
+                    records, 
+                    refresh_cache=False, 
+                    refresh_records=False)
+
+                logger.debug(f'True loop {true_loop} -- Using {len(records)} records as as base for description matching')
+                true_loop += 1
+
+                # logger.warning(f'{len(records)} records')
+
+                # unaccounted_amount = sum([ r.amount for r in records ])
+
+                # -- 
+                reset_loop = False 
+
+                # -- this is a rough method to get initial groups together.. 
+                # -- maybe in a few cases another feature would be better 
+                # -- checks have no description, so maybe go for all checks first and group by amount
+                distinct_descriptions = set([ r.description or '' for r in records ])
+                distinct_description_length = len(distinct_descriptions)
+
+                logger.debug(f'Have {distinct_description_length} distinct descriptions')
+
+                for i, description in enumerate(distinct_descriptions, 1):
+
+                    logger.info(f'Trying description "{description}" {i}/{distinct_description_length}')
+
+                    # -- if we want to enable 'split accounts' again 
+                    # -- this is what it consumes 
+                    # account = {
+                    #     '_count': len(desc_records),
+                    #     '_records': sorted(desc_records, key=lambda r: r.date)
+                    # }
+                    # for subh in ['type', 'date', 'amount']:
+                    #     account[subh] = [ r.__getattribute__(subh) for r in desc_records ]
                     
-                    TransactionRule.objects.create(transactionruleset=transaction_rule_set, **rule_attempt)
-                    transaction_rule_set.refresh_from_db()
-                    logger.debug("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
+                    # desc_records = sorted([ r for r in records if description in [r.description, ''] ], key=lambda r: r.transaction_date)
+                    # record_stats = RecordGrouper.get_stats(desc_records)
+
+                    # proto_transaction = ProtoTransaction.objects.filter(name=description).first()
+
+                    # if not proto_transaction:
                     
-                    records = transaction_rule_set.records(refresh=True)
-
-                    logger.info(f'Attempting rule {rule_attempt} -> {len(records)} records')
-                    logger.debug("\n".join([ str(r) for r in records ]))
-
-                    # record_rule_index = RecordGrouper.get_record_rule_index(refresh=True)                    
-                    # records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
-                    # logger.warning(f'Removed used records and now have {len(records)}')
+                    '''
+                    the idea here is:
+                        - make a rule set, placeholder for now
+                        - fetch records, perform stats on records, and if stats are sufficient, make a prototransaction
+                        - starting with `description = description`
+                        - and progressively truncating as `description contains [description minus one word]`
+                        - if nothing works, delete the placeholder rule set 
+                    '''
+                    transaction_rule_set = TransactionRuleSet.objects.create(
+                        name=description, 
+                        join_operator=TransactionRuleSet.JOIN_OPERATOR_AND, 
+                        is_auto=True
+                    )
+                    logger.info(f'Created rule set {transaction_rule_set.id}')
                     
-                    try:
-                        stats = RecordGrouper.get_stats(records)
+                    match_operator = TransactionRule.MATCH_OPERATOR_EQUALS_HUMAN
+                    match_value = description 
 
-                        logger.debug(stats)
-
-                        required_fields = ['timing_is_active', 'amount_is_active', 'recurring_amount', 'transaction_type', 'period', 'record_count']
-                        for f in required_fields:
-                            if not stats[f]:
-                                raise ValueError(f'The stats calculated are insufficient. Reason: {f} = {stats[f]}.')
+                    proto_transaction = None 
+                    
+                    for is_modified_description, rule_attempt in RecordGrouper._prototransaction_rule_attempt(match_operator, match_value):
                         
-                        proto_transaction = ProtoTransaction.new_from_rule_attempt(rule_attempt, stats, transaction_rule_set)
+                        TransactionRule.objects.create(transactionruleset=transaction_rule_set, **rule_attempt)
+                        transaction_rule_set.refresh_from_db()
+                        logger.debug("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
                         
-                        logger.info(f'Seems ok.. made prototransaction {proto_transaction.id}')
-                        reset_loop = is_modified_description
-                        break 
-                    
-                    except KeyError as ke:
-                        raise ke 
+                        records = transaction_rule_set.records(refresh=True)
+                        records = RecordGrouper.filter_accounted_records(
+                            records, 
+                            refresh_cache=False, 
+                            refresh_records=False)
 
-                    except:
-                        logger.error(sys.exc_info()[0])
-                        logger.error(sys.exc_info()[1])
-                        traceback.print_tb(sys.exc_info()[2])
-                        logger.warning(f'Deleting all rules from transactionruleset {transaction_rule_set.name}')
-                        transaction_rule_set.transactionrules.all().delete()
+                        logger.info(f'Attempting rule {rule_attempt} -> {len(records)} records')
+                        logger.debug("\n".join([ str(r) for r in records ]))
 
-                # -- if we made a prototransaction
-                # -- and it was from a modified description
-                # -- we need to break to the outer forever loop and recpature a fresh set of descriptions to work with 
-                if proto_transaction:
-                    if reset_loop:
-                        break 
+                        # record_rule_index = RecordGrouper.get_record_rule_index(refresh=True)                    
+                        # records = [ r for r in records if str(r.id) not in record_rule_index or record_rule_index[str(r.id)] == 0 ]
+                        # logger.warning(f'Removed used records and now have {len(records)}')
+                        
+                        try:
+                            stats = RecordGrouper.get_stats(records)
+
+                            logger.debug(stats)
+
+                            required_fields = ['timing_is_active', 'amount_is_active', 'recurring_amount', 'transaction_type', 'period', 'record_count']
+                            for f in required_fields:
+                                if not stats[f]:
+                                    raise ValueError(f'The stats calculated are insufficient. Reason: {f} = {stats[f]}.')
+                            
+                            proto_transaction = ProtoTransaction.new_from_rule_attempt(rule_attempt, stats, transaction_rule_set)
+                            
+                            logger.info(f'Seems ok.. made prototransaction {proto_transaction.id}')
+                            reset_loop = is_modified_description
+                            break 
+                        
+                        except KeyError as ke:
+                            raise ke 
+
+                        except:
+                            logger.error(sys.exc_info()[0])
+                            logger.error(sys.exc_info()[1])
+                            traceback.print_tb(sys.exc_info()[2])
+                            logger.warning(f'Deleting all rules from transactionruleset {transaction_rule_set.name}')
+                            transaction_rule_set.transactionrules.all().delete()
+
+                    # -- if we made a prototransaction
+                    # -- and it was from a modified description
+                    # -- we need to break to the outer forever loop and recpature a fresh set of descriptions to work with 
+                    if proto_transaction:
+                        if reset_loop:
+                            logger.debug(f'Prototransaction was made modifying the description, starting over')
+                            break 
+                        else:
+                            logger.debug(f'Prototransaction was made without modification to description')
+                    else:
+                        logger.warning(f'No prototransaction could be created, deleting the rule set and moving on')
+                        transaction_rule_set.delete()
+
+                # -- if we're here not because we created a prototransaction with a modified description
+                # -- and needed to recapture a fresh set of descriptions to work with 
+                # -- but rather, we just ran out of descriptions
+                # -- then quit for good 
+                if not reset_loop:
+                    logger.debug(f'Done with that set of descriptions, and breaking out of True since we finished naturally')
+                    break 
                 else:
-                    logger.warning(f'Nothing worked, deleting the rule set')
-                    transaction_rule_set.delete()
+                    logger.debug(f'Done with descriptions, but taking another pass since a description was modified')
 
-            # -- if we're here not because we created a prototransaction with a modified description
-            # -- and needed to recapture a fresh set of descriptions to work with 
-            # -- but rather, we just ran out of descriptions
-            # -- then quit for good 
-            if not reset_loop:
-                break 
+            logger.info(f'All done regrouping auto rule sets!')    
 
-        logger.info(f'All done regrouping!')    
+                    # record_group = RecordGroup.objects.filter(name=description).first()
 
-                # record_group = RecordGroup.objects.filter(name=description).first()
+                    # if not record_group:
+                    #     record_group = RecordGroup.objects.create(name=description)
 
-                # if not record_group:
-                #     record_group = RecordGroup.objects.create(name=description)
+                    # for record in desc_records:
+                    #     record.record_group = record_group 
+                    #     record.save()
 
-                # for record in desc_records:
-                #     record.record_group = record_group 
-                #     record.save()
+                # # -- multi-stage account identification 
+                # # -- stage 1: by description 
+                # for desc in self.records_by_description:
+                    
+                #     description_records = self.records_by_description[desc]
+                    
+                #     # -- stage 2: within a description, could there be multiple transaction groupings?
+                #     accounts = self._split_accounts(description_records)
 
-            # # -- multi-stage account identification 
-            # # -- stage 1: by description 
-            # for desc in self.records_by_description:
-                
-            #     description_records = self.records_by_description[desc]
-                
-            #     # -- stage 2: within a description, could there be multiple transaction groupings?
-            #     accounts = self._split_accounts(description_records)
+                #     # -- stage 3: (TODO) without a description, can we find patterns in amounts and dates 
 
-            #     # -- stage 3: (TODO) without a description, can we find patterns in amounts and dates 
+                #     # -- one 'account' here is a best attempt at a Transaction/RecurringTransaction, etc. 
+                #     for account in accounts:
 
-            #     # -- one 'account' here is a best attempt at a Transaction/RecurringTransaction, etc. 
-            #     for account in accounts:
+                #         # -- what do we actually want?
+                #         # the period of the data 
+                #         # if data is roughly periodic, we can expect 
+                #         # - the average of date diffs to be roughly the period 
+                #         #       - may need to drop outliers 
+                #         #       - st. dev. may be helpful?
+                #         #       - instead of average, binned values / histogram 
+                #         # - most diffs to fall within a margin of the actual period 
+                #         #       - reverse calculate a margin of what value most diffs fall within ? 
+                #         #       - again, histogram?
 
-            #         # -- what do we actually want?
-            #         # the period of the data 
-            #         # if data is roughly periodic, we can expect 
-            #         # - the average of date diffs to be roughly the period 
-            #         #       - may need to drop outliers 
-            #         #       - st. dev. may be helpful?
-            #         #       - instead of average, binned values / histogram 
-            #         # - most diffs to fall within a margin of the actual period 
-            #         #       - reverse calculate a margin of what value most diffs fall within ? 
-            #         #       - again, histogram?
+                #         # -- sort dates and get deltas between them 
+                #         # -- generate histogram or maybe just bin edges for deltas  
 
-            #         # -- sort dates and get deltas between them 
-            #         # -- generate histogram or maybe just bin edges for deltas  
+                #         # -- pull together as much pertinent information to fill in TransactionForm
 
-            #         # -- pull together as much pertinent information to fill in TransactionForm
+                #         record_group = RecordGroup.objects.create(name=desc)
+                #         for record in account["_records"]:
+                #             record.record_group = record_group 
+                #             record.save()
 
-            #         record_group = RecordGroup.objects.create(name=desc)
-            #         for record in account["_records"]:
-            #             record.record_group = record_group 
-            #             record.save()
+                #         # account_entry = self.get_record_group_stats(record_group.id)
 
-            #         # account_entry = self.get_record_group_stats(record_group.id)
-
-            #         # self.accounts.append(account_entry)
-                
-            #         # if transaction_type not in self.accounts_by_transaction_type:
-            #         #     self.accounts_by_transaction_type[transaction_type] = []
-            #         # self.accounts_by_transaction_type[transaction_type].append(account_entry)
+                #         # self.accounts.append(account_entry)
+                    
+                #         # if transaction_type not in self.accounts_by_transaction_type:
+                #         #     self.accounts_by_transaction_type[transaction_type] = []
+                #         # self.accounts_by_transaction_type[transaction_type].append(account_entry)
             
 # if __name__ == "__main__":
+
+
+
 
 #     match = sys.argv[1]
 

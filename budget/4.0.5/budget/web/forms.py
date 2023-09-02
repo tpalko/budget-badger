@@ -57,13 +57,14 @@ class TransactionRuleForm(ModelForm):
         for field in [ f for f in self.fields if f not in exclude ]:
             # logger.warning(f'checking {field} in {self.cleaned_data} not if {exclude}')
             if field not in self.cleaned_data:
+                logger.error(f'{field} is missing??')
                 raise ValidationError({field: _('All fields are required')})
         
         if 'match_operator' in self.cleaned_data:
             if self.cleaned_data['match_operator'] not in [ c[0] for c in TransactionRule.match_operator_choices ]:
                 raise ValidationError({'match_operator': _(f'Match operator must be one of {",".join(TransactionRule.operation_map.keys())}')})
 
-        if 'match_value' in self.cleaned_data:
+        if 'match_value' in self.cleaned_data and 'match_operator' in self.cleaned_data and self.cleaned_data['match_operator'] not in [TransactionRule.MATCH_OPERATOR_LT_HUMAN, TransactionRule.MATCH_OPERATOR_GT_HUMAN, TransactionRule.MATCH_OPERATOR_EQUALS_HUMAN]:
             if len(self.cleaned_data['match_value']) < 3:
                 raise ValidationError({'match_value': _(f'Match value must be at least three characters')})
             

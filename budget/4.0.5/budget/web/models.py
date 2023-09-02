@@ -133,7 +133,7 @@ def records_from_rules(rule_logics, join_operator):
 
         qs = qs.order_by('-transaction_date')
     
-    qs = qs.exclude(meta_record_type=Record.RECORD_TYPE_INTERNAL)
+    qs = qs.exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
 
     return list(qs)
 
@@ -160,6 +160,12 @@ class TransactionRuleSet(BaseModel):
         
         return self._records 
 
+    def prototransaction_safe(self):
+        try:
+            return self.prototransaction 
+        except:
+            return None 
+    
     def save(self, *args, **kwargs):
         super(TransactionRuleSet, self).save(*args, **kwargs)
 
@@ -175,7 +181,6 @@ class TransactionRuleSet(BaseModel):
                 rs.save()
             else:
                 curr = rs.priority
-
 
 class TransactionRuleLogic(object):
 
@@ -216,7 +221,7 @@ class TransactionRule(BaseModel):
     MATCH_OPERATOR_EQUALS_DJANGO = ''
     MATCH_OPERATOR_GT_DJANGO = '__gt'
     MATCH_OPERATOR_CONTAINS_DJANGO = '__icontains'
-    MATCH_OPERATOR_REGEX_DJANGO = '__regex'
+    MATCH_OPERATOR_REGEX_DJANGO = '__iregex'
 
     match_operator_lookup = {
         MATCH_OPERATOR_LT_HUMAN: MATCH_OPERATOR_LT_DJANGO,
@@ -241,7 +246,7 @@ class TransactionRule(BaseModel):
     match_value = models.CharField(max_length=100, null=True)    
 
     def __str__(self):
-        return f'{self.record_field}{self.match_operator}{self.match_value}'
+        return f'{self.record_field} {self.match_operator} {self.match_value}'
 
     def filter(self):
         return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
@@ -251,20 +256,49 @@ class ProtoTransaction(BaseModel):
 
     EXCLUDE_STAT_FIELDS = ['record_count', 'record_ids']
 
-    name = models.CharField(max_length=200, unique=True)
-    recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
-    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
-    # account = models.ForeignKey(to=Account, related_name='prototransactions', on_delete=models.SET_NULL, null=True)    
-    stats = models.JSONField(null=True)
+    transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)    
     property = models.ForeignKey(to=Property, related_name='prototransactions', on_delete=models.SET_NULL, null=True)
+    name = models.CharField(max_length=200, unique=True)
     tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
     transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
-    transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)
+    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
+    timing = models.CharField(max_length=20, choices=TransactionTypes.timing_choices, default=TransactionTypes.TRANSACTION_TIMING_SINGLE)
+    recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    is_active = models.BooleanField(null=False, default=True)
+    stats = models.JSONField(null=True)
     
     def cross_account(self):
-        all = self.stats['accounts'] + self.stats['creditcards']
-        return len(all) != 1
+        return len(self.stats['accounts'] + self.stats['creditcards']) > 1
 
+    '''
+    stats sample (8/31/23)
+    {
+        "accounts": [],
+        "amount_is_active": true,
+        "average_gap": "nan days",
+        "avg_amount": -138.57,
+        "creditcards": [
+            "amex - tim"
+        ],
+        "description": "BRILLIANT.ORG - EDU SAN FRANCISCO       CA",
+        "ended_at": "05/06/2023",
+        "high_period": "daily",
+        "high_period_days": 0,
+        "is_variable": false,
+        "low_period": "daily",
+        "low_period_days": 0,
+        "monthly_amount": -138.57,
+        "outliers_removed": 0,
+        "period": "daily",
+        "record_count": 1,
+        "record_ids": "70597",
+        "recurring_amount": -138.57,
+        "started_at": "05/06/2023",
+        "timing_is_active": true,
+        "transaction_type": "single"
+        }
+
+    '''
     def update_stats(self, stats):
         fields = [ f.name for f in ProtoTransaction._meta.fields ]
         self.stats = { s: stats[s] for s in stats if s not in fields and s not in ProtoTransaction.EXCLUDE_STAT_FIELDS }
@@ -502,31 +536,7 @@ class UploadedFile(BaseModel):
 #     name = models.CharField(max_length=255)
 #     stats = models.JSONField(null=True)
 
-class RecordTypeManager(models.Manager):
-
-    def get_queryset(self):
-        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
-        return super().get_queryset().annotate(meta_record_type=meta_join.values('record_type'))
-
-    def filter_type(self, record_type):
-        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
-        records = self.annotate(meta_record_type=meta_join.values('record_type'))
-        return records.filter(meta_record_type=record_type)
-
-    def exclude_type(self, record_type):
-        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
-        records = self.annotate(meta_record_type=meta_join.values('record_type'))
-        return records.exclude(meta_record_type=record_type)
-
-class Record(BaseModel):
-    '''A normalized representation of a single historical transaction'''
-
-    objects = RecordTypeManager()
-
-    class Meta:
-        indexes = [
-            models.Index(fields=['description']),
-        ]
+class RecordMeta(BaseModel):
 
     # -- income, refunds, any amount from an external source to the system 
     RECORD_TYPE_UNKNOWN = 'unknown'
@@ -547,6 +557,33 @@ class Record(BaseModel):
         RECORD_TYPE_INTERNAL    
     ]
 
+    extra_fields_hash = models.CharField(max_length=32, null=True)
+    record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)
+    detail = models.TextField(null=False, blank=True)
+
+
+class RecordTypeManager(models.Manager):
+
+    def get_queryset(self):
+        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
+        return super().get_queryset().annotate(meta_record_type=meta_join.values('record_type'))
+
+    def filter_type(self, record_type):        
+        return self.filter(meta_record_type=record_type)
+
+    def exclude_type(self, record_type):
+        return self.exclude(meta_record_type=record_type)
+
+class Record(BaseModel):
+    '''A normalized representation of a single historical transaction'''
+
+    objects = RecordTypeManager()
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['description']),
+        ]
+
     # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
     uploaded_file = models.ForeignKey(to=UploadedFile, related_name='records', on_delete=models.RESTRICT)    
     # transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
@@ -555,7 +592,7 @@ class Record(BaseModel):
     post_date = models.DateField(null=True)
     description = models.CharField(max_length=255, blank=True, null=True)
     amount = models.DecimalField(decimal_places=2, max_digits=20)    
-    record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)        
+    # record_type = models.CharField(max_length=15, null=False, choices=choiceify(RecordMeta.RECORD_TYPES), default=RecordMeta.RECORD_TYPE_UNKNOWN)        
     extra_fields = models.JSONField(null=True)
     extra_fields_hash = models.CharField(max_length=32, null=True)
     
@@ -593,9 +630,6 @@ class Record(BaseModel):
     #         raise ValidationError(_(f'Record.save: Another record(s) {",".join([ str(m.id) for m in matches ])} for a different upload (them:{",".join([ str(m.uploaded_file.id) for m in matches ])}, us:{self.uploaded_file.id}) matching all fields already exists in the database.'))
         
 
-class RecordMeta(BaseModel):
-    extra_fields_hash = models.CharField(max_length=32, null=True)
-    record_type = models.CharField(max_length=15, null=False, choices=choiceify(Record.RECORD_TYPES), default=Record.RECORD_TYPE_UNKNOWN)        
 
 MANAGER_METHOD_LOOKUP = {
     TransactionRule.INCLUSION_FILTER: Record.objects.filter,

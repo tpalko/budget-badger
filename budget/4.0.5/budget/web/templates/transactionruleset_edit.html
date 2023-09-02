@@ -64,6 +64,7 @@
     <div class="row">
         <div class="col-7">
             <h3>Stats</h3>
+            Ruleset: <span id="ruleset_evaluated"></span>
             <div id="recordstats"></div>
         </div>
     </div>
@@ -73,7 +74,7 @@
             <div id="aggregate"></div>            
         </div>
         <div class="col-7 col-offset-1">
-            <h3>Matched Records</h3>
+            <h3>Matched Records <span id="ruleresults_count"></span></h3>
             <div style="max-height: 500px;overflow-y:scroll;">
                 <div id="ruleresults"></div>        
             </div>
@@ -84,6 +85,7 @@
 <script language="javascript">
 
     var form;
+    var controller;
 
     function formSubmit(e) {
 
@@ -97,10 +99,17 @@
         // }
 
         e.preventDefault();
+        
+        if (controller != undefined) {
+            controller.abort();            
+        }
+
+        controller = new AbortController()
 
         var options = {
             method: form.method,
-            body: new FormData(form)
+            body: new FormData(form),
+            signal: controller.signal
         }
 
         // if (e.type == "keyup" && e.target.name.match(/-match_value$/)) {
@@ -111,8 +120,9 @@
         //     e.target.dataset.keyupped = 1;
         // }
         
-        fetch(form.action, options)
+        var ruleset_submission = fetch(form.action, options)
             .then((response) => {
+                controller = undefined;
                 var responsej = response.json();
                 if (e.type == "submit") {
                     document.location = '{% url "transactionrulesets_list" tenant_id=1 %}';
@@ -161,6 +171,8 @@
             document.querySelector("#aggregate").innerHTML = data.data.aggregate;
             document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;
             document.querySelector("#ruleresults").innerHTML = data.data.ruleresults;
+            document.querySelector("#ruleresults_count").innerHTML = data.data.ruleresults_count;
+            document.querySelector("#ruleset_evaluated").innerHTML = data.data.ruleset_evaluated;
 
             // data.data.records.forEach((record) => {
             //     var newRecord = document.createElement("div");

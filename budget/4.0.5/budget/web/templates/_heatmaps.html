@@ -6,11 +6,15 @@
         <table class="heatmap_table">
             <tr>
                 {% for day in 31|genrange %}
-                    <td class="heat-{% if heatmap_data.heatmap_normalized|lookup:day %}{{ heatmap_data.heatmap_normalized|lookup:day }}{% else %}0{% endif %}" data-region="{{ heatmap_data.heatmap_region_lookup|lookup:day }}">
+                    {% with heat_class=heatmap_data.heatmap_normalized|lookup:day %}
+                    <td class="heat-{% if heat_class %}{{ heat_class }}{% else %}0{% endif %}" data-region="{{ heatmap_data.heatmap_region_lookup|lookup:day }}">
                         <span class="day">{{ day }}</span>
-                        <span class="heat">{% if heatmap_data.heatmap|lookup:day %}{{ heatmap_data.heatmap|lookup:day }}{% else %}0{% endif %}</span>
+                        {% with heat_value=heatmap_data.heatmap|lookup:day %}
+                        <span class="heat">{% if heat_value %}{{ heat_value }}{% else %}0{% endif %}</span>
+                        {% endwith %}
                          <span class="heatmap_region">{{ heatmap_data.heatmap_region_lookup|lookup:day }}</span>
                     </td>
+                    {% endwith %}
                     {% if day|mod:7 == 0 %}</tr><tr>{% endif %}
                 {% endfor %}
             </tr>            
@@ -23,7 +27,13 @@
         <table class="heatmap_table">
             <tr>
             {% for weekday in heatmap_data.all_weekdays %}
-                <td class="heat-{% if heatmap_data.weekday_heatmap_normalized|lookup:weekday %}{{ heatmap_data.weekday_heatmap_normalized|lookup:weekday }}{% else %}0{% endif %}">{{ weekday }} ({% if heatmap_data.weekday_heatmap|lookup:weekday %}{{ heatmap_data.weekday_heatmap|lookup:weekday }}{% else %}0{% endif %} / {% if heatmap_data.weekday_heatmap_normalized|lookup:weekday %}{{ heatmap_data.weekday_heatmap_normalized|lookup:weekday }}{% else %}0{% endif %})</td>
+                {% with heat_class=heatmap_data.weekday_heatmap_normalized|lookup:weekday %}
+                <td class="heat-{% if heat_class %}{{ heat_class }}{% else %}0{% endif %}">
+                    {% with heat_value=heatmap_data.weekday_heatmap|lookup:weekday %}
+                    {{ weekday }} ({% if heat_value %}{{ heat_value }}{% else %}0{% endif %} / {% if heat_class %}{{ heat_class }}{% else %}0{% endif %})
+                    {% endwith %}
+                </td>
+                {% endwith %}
             {% endfor %}
             </tr>
         </table>

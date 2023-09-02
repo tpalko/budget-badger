@@ -26,6 +26,9 @@ def home(request):
 
     return redirect('transactions', tenant_id=1)
 
+def account_home(request, tenant_id):
+    return redirect('model_list', tenant_id=tenant_id)
+
 def model_list(request, tenant_id):
 
     accounts = Account.objects.order_by('id')
@@ -83,8 +86,6 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     message = ""
 
     try:
-
-        transactionrulesets_auto = TransactionRuleSet.objects.filter(is_auto=True)
         transactionrulesets_manual = TransactionRuleSet.objects.filter(is_auto=False)
 
         if False:
@@ -144,9 +145,7 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
         transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
 
     template_data = {
-        'auto_stats': ruleset_stats(transactionrulesets_auto),
         'manual_stats': ruleset_stats(transactionrulesets_manual),
-        'transactionrulesets_auto': sorted(transactionrulesets_auto, key=lambda t: t.prototransaction.stats['monthly_amount'], reverse=True),
         'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: t.priority, reverse=False),
         'message': message,
         'transactionruleset_form': transactionruleset_form,
@@ -202,7 +201,6 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
         # return redirect(f'transactionrulesets_list', tenant_id=tenant_id)
 
     elif request.method == "POST":
-        logger.warning(request.POST)
     
         TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)
         
@@ -228,9 +226,10 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     # -- yes, we're recreating the TransactionRuleSet.records method here, we don't have actual objects
                     # -- sort of.. just the forms that hold the fields for the objects
                     filters = [ TransactionRuleLogic(TransactionRule(**form.cleaned_data)) for form in transactionrule_formset ]
-                    filters = [ f for f in filters if f ]
-                    logger.warning(f'have {len(filters)} filters')
+                    # filters = [ f for f in filters if f ]
                     record_queryset = records_from_rules(filters, transactionruleset_form.cleaned_data['join_operator'])
+
+                    record_queryset = RecordGrouper.filter_accounted_records(record_queryset, less_than_priority=transactionruleset.priority or transactionruleset_form.cleaned_data['priority'], is_auto=False)
 
                     # record_queryset = None
                     # for form in transactionrule_formset:                                                  
@@ -262,7 +261,11 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     response['data']['aggregate'] = render_to_string("_ruleset_aggregate.html", context=recordstats)
                     response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(record_queryset) })
                     response['data']['ruleresults'] = render_to_string("_ruleresults.html", context={ 'records': record_data })                    
+                    response['data']['ruleresults_count'] = len(record_data)
+                    response['data']['ruleset_evaluated'] = "<br />".join([ str(f.instance) for f in transactionrule_formset.forms ])
 
+                    
+                    
                     # else:
                     #     message = "No queryset!"
                     #     response['messages'].append(message)
@@ -306,12 +309,21 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     trf.is_valid()
                     trf.save()
                 
-                stats = RecordGrouper.get_stats(transactionruleset.records(refresh=True))
+                transactionruleset.refresh_from_db()
+                
+                records = transactionruleset.records(refresh=True)
+                records = RecordGrouper.filter_accounted_records(
+                    records, 
+                    less_than_priority=transactionruleset.priority, 
+                    is_auto=False)
+                
+                stats = RecordGrouper.get_stats(records)
 
-                try:
-                    transactionruleset.prototransaction.update_stats(stats)
-                    transactionruleset.prototransaction.save() 
-                except:
+                proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
+                if proto_transaction:
+                    proto_transaction.update_stats(stats)
+                    proto_transaction.save()
+                else:
                     proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
 
                 # transactionrule_formset.save() 
@@ -370,6 +382,17 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
     
     # return render(request, "transactionruleset_edit.html", template_data)
 
+def transactionrulesets_auto(request, tenant_id):
+
+    transactionrulesets_auto = TransactionRuleSet.objects.filter(is_auto=True)
+
+    template_data = {
+        'auto_stats': ruleset_stats(transactionrulesets_auto),        
+        'transactionrulesets_auto': sorted([ t for t in transactionrulesets_auto if t.prototransaction_safe()], key=lambda t: t.prototransaction.stats['monthly_amount'], reverse=True)
+    }
+
+    return render(request, "transactionrulesets_auto.html", template_data)
+
 def delete_uploadedfile(request, tenant_id, uploadedfile_id):
     success = False 
     message = ""
@@ -409,7 +432,7 @@ def filters(request, tenant_id):
 
     records_by_type = {}
 
-    for record_type in Record.RECORD_TYPES:
+    for record_type in RecordMeta.RECORD_TYPES:
             
         records = Record.objects.filter(meta_record_type=record_type).filter(
             Q(
@@ -430,14 +453,14 @@ def filters(request, tenant_id):
         #     uploaded_file__creditcard__isnull=False, 
         #     amount__gt=0            
         # )
-        # cc_payments = cc_payments.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
+        # cc_payments = cc_payments.filter(record_type=RecordMeta.RECORD_TYPE_UNKNOWN)
 
         # bank_transfers = Record.objects.filter(
         #     uploaded_file__account__isnull=False, 
         #     description__regex=r"FROM|TO.+CHECKING|SAVINGS", 
         #     amount__gt=0
         # )
-        # bank_transfers = bank_transfers.filter(record_type=Record.RECORD_TYPE_UNKNOWN)
+        # bank_transfers = bank_transfers.filter(record_type=RecordMeta.RECORD_TYPE_UNKNOWN)
 
         template_models = [ {
             'id': p.id,
@@ -450,7 +473,7 @@ def filters(request, tenant_id):
             'assoc': []     
         } for p in records ]
 
-        if record_type in [Record.RECORD_TYPE_UNKNOWN, Record.RECORD_TYPE_INTERNAL]:
+        if record_type in [RecordMeta.RECORD_TYPE_UNKNOWN, RecordMeta.RECORD_TYPE_INTERNAL]:
             for model in template_models:
                 checking = Record.objects.filter(
                     # uploaded_file__account__isnull=False, 
@@ -471,7 +494,7 @@ def filters(request, tenant_id):
         
         records_by_type[record_type] = template_models
         
-    return render(request, "filters.html", {'records': records_by_type, 'template_models': template_models, 'record_types': Record.RECORD_TYPES})
+    return render(request, "filters.html", {'records': records_by_type, 'template_models': template_models, 'record_types': RecordMeta.RECORD_TYPES})
 
 def update_record_type(request, tenant_id, record_id):
 
@@ -492,7 +515,7 @@ def update_record_type(request, tenant_id, record_id):
 
         record_type = request.POST['record_type']
 
-        if record_type == Record.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
+        if record_type == RecordMeta.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
             response['message'] = f'Both records could not be found'
         else:
 
@@ -540,14 +563,14 @@ def records(request, tenant_id):
     # -- post processing 
     for a in records_by_account:
         if hide_internal:
-            a['records'] = a['records'].exclude_type(record_type=Record.RECORD_TYPE_INTERNAL)
+            a['records'] = a['records'].exclude_type(record_type=RecordMeta.RECORD_TYPE_INTERNAL)
         a['records'] = a['records'].order_by(record_sort)
         if hide_accounted:
             a['records'] = [ r for r in a['records'] if str(r.id) not in record_rules ]
     
     for c in records_by_creditcard:
         if hide_internal:
-            c['records'] = c['records'].exclude_type(record_type=Record.RECORD_TYPE_INTERNAL)
+            c['records'] = c['records'].exclude_type(record_type=RecordMeta.RECORD_TYPE_INTERNAL)
         c['records'] = c['records'].order_by(record_sort)
         if hide_accounted:
             c['records'] = [ r for r in c['records'] if str(r.id) not in record_rules ]
@@ -636,10 +659,10 @@ def reprocess_files(request, tenant_id):
     
     return redirect("files", tenant_id=tenant_id)
 
-def regroup_records(request, tenant_id):
+def regroup_manual_records(request, tenant_id):
 
     try:
-        RecordGrouper.group_records(force_regroup_all=True)
+        RecordGrouper.group_records(force_regroup_all=True, is_auto=False)
     except:
         message = str(sys.exc_info()[1])
         logger.error(sys.exc_info()[0])
@@ -647,6 +670,18 @@ def regroup_records(request, tenant_id):
         traceback.print_tb(sys.exc_info()[2])
 
     return redirect("transactionrulesets_list", tenant_id=tenant_id)
+
+def regroup_auto_records(request, tenant_id):
+
+    try:
+        RecordGrouper.group_records(force_regroup_all=True, is_auto=True)
+    except:
+        message = str(sys.exc_info()[1])
+        logger.error(sys.exc_info()[0])
+        logger.error(message)
+        traceback.print_tb(sys.exc_info()[2])
+
+    return redirect("transactionrulesets_auto", tenant_id=tenant_id)
 
 ##### PROJECTIONS 
 

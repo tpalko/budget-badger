@@ -14,18 +14,27 @@
 <div class="header">
 
 	<div class="row">
-		<div class="col-4">
+		<div class="col-3">
 			<h1 class="logo">Budget Badger</h1>
 		</div>
-		<div class="col-8 pull-right">
+		<div class="col-13 pull-right">
 			<ul class="menu">
-				<li><a href="{% url "model_list" tenant_id="1" %}">Accounts/Cards</a></li>
-				<li><a href="{% url "files" tenant_id="1" %}">Files</a></li>
-				<li><a href="{% url "records" tenant_id="1" %}">Records</a></li>			
-				<li><a href="{% url "filters" tenant_id="1" %}">Filters</a></li>			
-				<li><a href="{% url "transactionrulesets_list" tenant_id="1" %}">Rules</a></li>			
-				<li><a href="{% url "transactions" tenant_id=1 %}">Transactions</a></li>
-				<li><a href="{% url "projection" tenant_id="1" %}">Projection</a></li>
+				{% url "model_list" tenant_id="1" as accounts_url %}
+				<li class="{% if request.path == accounts_url %}selected{% endif %}"><a href="{{ accounts_url }}">Accounts/Cards</a></li>
+				{% url "files" tenant_id="1" as files_url %}
+				<li class="{% if request.path == files_url %}selected{% endif %}"><a href="{{ files_url }}">Files</a></li>
+				{% url "records" tenant_id="1" as records_url %}
+				<li class="{% if request.path == records_url %}selected{% endif %}"><a href="{{ records_url }}">Records</a></li>			
+				{% url "filters" tenant_id="1" as filters_url %}
+				<li class="{% if request.path == filters_url %}selected{% endif %}"><a href="{{ filters_url }}">Filters</a></li>			
+				{% url "transactionrulesets_list" tenant_id="1" as rules_url %}
+				<li class="{% if request.path == rules_url %}selected{% endif %}"><a href="{{ rules_url }}">Rules</a></li>
+				{% url "transactionrulesets_auto" tenant_id="1" as groups_url %}
+				<li class="{% if request.path == groups_url %}selected{% endif %}"><a href="{{ groups_url }}">Auto Groups</a></li>
+				{% url "transactions" tenant_id="1" as transactions_url %}
+				<li class="{% if request.path == transactions_url %}selected{% endif %}"><a href="{{ transactions_url }}">Transactions</a></li>
+				{% url "projection" tenant_id="1" as projection_url %}
+				<li class="{% if request.path == projection_url %}selected{% endif %}"><a href="{{ projection_url }}">Projection</a></li>
 			</ul>		
 		</div>
 	</div>
