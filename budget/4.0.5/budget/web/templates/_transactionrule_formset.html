@@ -1,0 +1,95 @@
+
+<div>
+    {{ transactionrule_formset.management_form }}
+    <div id="transactionrule_formset">
+        {% for error in transactionrule_formset.errors %} 
+            {{ error }}
+        {% endfor %}
+        {{ transactionrule_formset.non_form_errors }}
+        {% for form in transactionrule_formset %}
+            <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
+                <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>
+            </div>            
+        {% endfor %}
+    </div>
+    <a id="another_form" href="#">+</a>            
+</div>
+
+{% include "_record_matcher_results.html" %}
+
+<script language="javascript">
+
+    function renumberFormDivs() {
+
+    var formDivs = document.querySelectorAll(".formdiv");    
+    form['form-TOTAL_FORMS'].value = formDivs.length;
+
+    formDivs.forEach((el, formDivIndex) => {
+
+        var beforeCounter = el.dataset.counter;
+
+        el.dataset.counter = formDivIndex;
+
+        el.querySelectorAll("label").forEach((el, i) => {
+            el.setAttribute('for', el.getAttribute('for').replace('form-' + beforeCounter, 'form-' + formDivIndex));
+        })
+        el.querySelectorAll("select").forEach((el, i) => {
+            el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+            el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+        })
+        el.querySelectorAll("input").forEach((el, i) => {
+            el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+            el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+        })
+        el.querySelector("span.formdivcounter").innerText = formDivIndex + 1;
+        el.querySelector(".minusform").dataset.formdiv = formDivIndex;
+
+        el.id = "formdiv-" + (formDivIndex);
+    });
+    }
+
+    function minusForm(e) {
+        e.preventDefault();
+        var index = e.target.dataset.formdiv;
+        form.querySelector("#formdiv-" + index).remove();
+        renumberFormDivs();
+        formSubmit(e);
+    }
+
+    function addForm(e) {
+
+        e.preventDefault();
+            
+        var cloned = document.querySelector(".formdiv[data-counter='0']").cloneNode(true);
+
+        cloned.querySelectorAll("input").forEach((el, i) => {
+            if (!el.name.match(/form-[0-9]+-transactionruleset/)) {
+                el.value = "";
+            }                
+            el.addEventListener("keyup", recordMatcherSubmit);
+        })
+
+        cloned.querySelector(".minusform").addEventListener('click', minusForm);
+        // var minusLink = document.createElement("a");
+        // minusLink.innerText = "-";
+        // minusLink.href = "#";
+        // minusLink.addEventListener('click', minusForm);
+        // cloned.appendChild(minusLink);
+
+        document.querySelector("#transactionrule_formset").append(cloned);
+        renumberFormDivs();
+    }
+
+    document.addEventListener('DOMContentLoaded', (e) => {
+
+        var formset_div = document.querySelector("#transactionrule_formset");
+
+        document.querySelector("#another_form").addEventListener('click', addForm);
+
+        formset_div.querySelectorAll(".minusform").forEach((el, i) => {
+            el.addEventListener('click', minusForm);
+        })
+
+    });
+
+</script>

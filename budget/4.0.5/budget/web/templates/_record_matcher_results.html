@@ -1,0 +1,112 @@
+<div id="edit_stats" style="display: none">
+    <div id="match_errors"></div>
+    <div class="row">
+        <div class="col-9">
+            Ruleset: <span id="ruleset_evaluated"></span>
+            <div id="recordstats"></div>            
+            <div id="aggregate"></div>
+            <div id="ruleresults"></div>
+        </div>
+        <div class="col-5 col-offset-1">
+            <div id="heatmaps"></div>
+        </div>
+    </div>    
+</div>
+
+<script language="javascript">
+
+    var controller;
+    var form;
+
+    function recordMatcherSubmit(e) {
+
+        e.preventDefault();
+
+        if (controller != undefined) {
+            controller.abort();            
+        }
+
+        controller = new AbortController()
+
+        var options = {
+            method: "POST",
+            body: new FormData(form),
+            signal: controller.signal
+        }
+
+        var url = "{% url "recordmatcher" tenant_id=1 %}";
+
+        {% if transactionruleset_form.id.value %}
+            var url = "{% url "recordmatcher" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}";
+        {% endif %}
+
+        console.debug('going to submit to ' + url);
+        
+        var ruleset_submission = fetch(url, options)
+            .then((response) => {
+                controller = undefined;
+                return response.json();
+            })
+            .then(handleMatchResponse)
+            .catch((error) => {
+                console.error(error);
+            });
+
+        return false;
+    }
+
+    function handleMatchResponse(data) {
+        
+        var formErrors = "";
+
+        if (data.form_errors) {            
+            formErrors += data.form_errors.join("\n") + "\n";        
+        }
+
+        document.querySelector("#form_errors").innerText = formErrors;
+
+        var matchErrors = "";
+
+        if (data.match_errors) {
+            for (var name in data.match_errors) {
+                matchErrors += name + ": " + data.match_errors[name] + "\n";
+            }
+        }
+
+        document.querySelector("#ruleresults").replaceChildren();
+        
+        document.querySelector("#edit_stats").style.display = "block";
+        document.querySelector("#match_errors").innerHTML = matchErrors;
+        document.querySelector("#recordstats").innerHTML = data.data.recordstats;
+        document.querySelector("#aggregate").innerHTML = data.data.aggregate;
+        document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;
+        document.querySelector("#ruleresults").innerHTML = data.data.ruleresults;            
+        document.querySelector("#ruleset_evaluated").innerHTML = data.data.ruleset_evaluated;
+
+        document.querySelectorAll("[class^='heat-']").forEach((el, i) => {
+            el.addEventListener('click', (e) => {
+                console.log('this feature is not available yet.. maybe someday it will filter the list of records shown by the region you just clicked on.. ')
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', (e) => {
+
+        form = document.querySelector("#ruleform");
+
+        form.querySelectorAll("select").forEach((el, i) => {
+            el.addEventListener('blur', recordMatcherSubmit);
+            el.addEventListener('change', recordMatcherSubmit);
+        })
+
+        form.querySelectorAll("input").forEach((el, i) => {
+            el.addEventListener('keyup', recordMatcherSubmit);
+            el.addEventListener('blur', recordMatcherSubmit);
+        })
+
+        {% if transactionruleset_form.id.value %}
+        recordMatcherSubmit(e);
+        {% endif %}
+    });
+
+</script>

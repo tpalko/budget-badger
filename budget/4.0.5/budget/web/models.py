@@ -160,6 +160,9 @@ class TransactionRuleSet(BaseModel):
         
         return self._records 
 
+    def __str__(self):
+        return self.name
+
     def prototransaction_safe(self):
         try:
             return self.prototransaction 
@@ -635,6 +638,22 @@ MANAGER_METHOD_LOOKUP = {
     TransactionRule.INCLUSION_FILTER: Record.objects.filter,
     TransactionRule.INCLUSION_EXCLUDE: Record.objects.exclude,
 }
+
+class Settings(BaseModel):
+
+    SETTINGS_WORKING_BRACKET = 'working_bracket'
+    SETTINGS_NULL = 'null'
+
+    SETTINGS_CHOICES = [
+        (SETTINGS_WORKING_BRACKET, 'working bracket',)
+    ]
+
+    SETTINGS_TYPES = {
+        SETTINGS_WORKING_BRACKET: 'fromto'
+    }
+
+    name = models.CharField(choices=SETTINGS_CHOICES, max_length=255, null=False, default=SETTINGS_NULL)
+    value = models.CharField(max_length=255, null=True)    
 
 class TransactionTag(BaseModel):
 

@@ -425,6 +425,11 @@ class RecordGrouper(object):
             400 
         ]
 
+        DAILY = 0
+        WEEKLY = 1
+        BIWEEKLY = 2
+        MONTHLY = 3
+
         hist, bins = np.histogram(recent_dates_gaps, bins=timing_bins) #, weights=weights[0:-1])
 
         # nonzero_buckets = [ h for h in hist if h > 0 ]
@@ -440,6 +445,19 @@ class RecordGrouper(object):
         logger.debug(f'hist {hist}')
         logger.debug(f'bins {bins}')
         logger.debug(f'dist {dist}')
+
+        '''
+        - one record = single
+        - 100% in one bucket = periodic
+        - between 30-50% in each of two buckets separated by at least one bucket, no more than 20% in any other
+            - OR >= 40% in one bucket and no more than 20% in at least one other separated by at least one bucket
+            - OR <= 20% in any bucket
+            - AND at least one every 30 days on average = chaotic frequent
+            - AND less than = chaotic rare
+        '''
+
+        # if any([ d for d in dist if d >= 90 ]):
+
         # logger.debug(json.dumps(bucket_count_over_threshold, indent=2))
 
     @staticmethod 
@@ -596,9 +614,11 @@ class RecordGrouper(object):
         if is_auto is not None:
             tx_rule_sets = tx_rule_sets.filter(is_auto=is_auto)
 
+        prefetched_rule_sets = tx_rule_sets.prefetch_related('transactionrules')
+
         # -- list of lists of record IDs for each rule set 
         # rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets ]
-        rule_set_ids = { trs.id: [ r.id for r in trs.records(refresh=refresh_records) ] for trs in tx_rule_sets }
+        rule_set_ids = { trs.id: [ r.id for r in trs.records(refresh=refresh_records) ] for trs in prefetched_rule_sets }
         # -- flatten and deduplicate list of lists 
         record_ids = set([ i for s in rule_set_ids.values() for i in s ])
         # -- mapping of record ID to the count of lists it's a part of

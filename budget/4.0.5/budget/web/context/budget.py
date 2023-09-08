@@ -15,6 +15,50 @@ def budget_context(request_context):
     env_debug = str(os.getenv('DEBUG')).lower() in [ "1" ]
     debug = query_debug or env_debug
 
+    menu = [
+        { 
+            'url': 'model_list',
+            'display': 'Accounts/Cards'
+        },
+        { 
+            'url': 'files',
+            'display': 'Files'
+        },
+        { 
+            'url': 'records',
+            'display': 'Records'
+        },
+        { 
+            'url': 'filters',
+            'display': 'Filters'
+        },
+        { 
+            'url': 'sorter',
+            'display': 'Sorter'
+        },
+        { 
+            'url': 'transactionrulesets_list',
+            'display': 'Rules'
+        },
+        { 
+            'url': 'transactionrulesets_auto',
+            'display': 'Auto Groups'
+        },
+        { 
+            'url': 'transactions',
+            'display': 'Transactions'
+        },
+        { 
+            'url': 'projection',
+            'display': 'Projection'
+        },
+        { 
+            'url': 'settings',
+            'display': 'Settings'
+        },
+    ]
+
     return {
-        'debug': debug
+        'debug': debug,
+        'menu': menu
     }

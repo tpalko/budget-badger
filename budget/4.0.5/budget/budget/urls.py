@@ -20,6 +20,10 @@ from web import views
 urlpatterns = [
     path(r'', views.home, name="home"),
     #path(r'^transaction/', views.transaction_new, name="transaction_new"),    
+    re_path(r'account/(?P<tenant_id>[0-9]+)/settings/', views.settings, name="settings"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/sorter/', views.sorter, name="sorter"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/recordmatcher/(?P<transactionruleset_id>[0-9]+)/', views.recordmatcher, name="recordmatcher"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/recordmatcher/', views.recordmatcher, name="recordmatcher"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/auto/', views.transactionrulesets_auto, name="transactionrulesets_auto"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/(?P<transactionruleset_id>[0-9]+)/', views.transactionrulesets_list, name="transactionrulesets_list"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionrulesets/', views.transactionrulesets_list, name="transactionrulesets_list"),

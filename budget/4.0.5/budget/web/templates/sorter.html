@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Sorter</h2>
+
+<div>
+    <div id="form_errors"></div>
+    
+    <form id="ruleform">
+        {% csrf_token %}
+
+        {{ form.as_p }}        
+        <div>
+            {% include "_transactionrule_formset.html" %}
+        </div>
+        <div>
+            <input type="submit" />
+        </div>
+    </form>
+</div>
+
+<table class="clicky-table">
+    {% for record in records %}
+        <tr>
+            <td>
+                {{ record.description }}
+            </td>
+            <td>
+                {{ record.amount }}
+            </td>
+        </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

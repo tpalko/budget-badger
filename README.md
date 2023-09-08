@@ -22,6 +22,16 @@ This is a basic data entry step. These definitions are necessary because the ear
 
 You will need to download CSV reports from your bank and credit cards, and anywhere else earning and spending happens, like money transfer services. The system is built to consume these reports as they are, so they only need to be re-uploaded here.
 
+#### Record Intake 
+
+Each line of a CSV will correspond to a Record in the system, however for CSVs of widely varying formats to coexist, we extract the three main features of the record: date, amount, and description. Everything else gets filed into a JSON structure that goes into an "extra fields" field. The amount is also carefully tuned. Not every institution gives a single "amount" column that is positive when the sum is a credit to you and negative otherwise. Sometimes this convention is reversed, sometimes there are specific "debit" and "credit" columns. In any case, we want all of our records to be one way: negative when money goes out, positive when money comes in.
+
+#### Record Formats
+
+Predefining the format of a CSV allows for a few novel features. One is the ability to set how positive and negative amounts are treated and normalize them on the values as they come into the system. Another is to be able to change this setting and re-import all records from the original document that was uploaded. Record Formats are associated with accounts and credit cards, one of which is chosen as the target at the time of upload. 
+
+A developing feature is smarter Record Format creation, wherein the user only chooses the convention, and the system figures out the column names, creates a new Record Format if it needs to and associates it with the account or credit card you're targeting, or creates a new placeholder account or credit card if you simply tell it the one you need doesn't exist yet. ;
+
 ### Group Records automatically, with Rules, or by individual selection
 
 The term "Transactions" here is somewhat nonstandard. A Transaction in this system is not a single bank transaction but rather a single institution, purpose, utility, job, etc. with which a pattern of spending or earning over time can be identified. A Transaction can be recurring, which would cover income from a job, utility or insurance payments, taxes, or even categories of spending, such as groceries, gas or dining out. If you take an annual vacation, that can also be captured as a Transaction - instead of breaking out individual items like plane tickets or hotels you can use historical records from previous vacations and let the system figure out how much you generally spend and account for that annual occurrence as a single Transaction in its projections.

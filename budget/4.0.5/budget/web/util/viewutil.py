@@ -27,29 +27,33 @@ def get_querystring(request, key, default=""):
             val = querystring[key]
     return val
 
-def _get_heatmap_region_lookup(heatmap):
+def _get_heatmap_region_lookup(heatmap, heatmap_normalized):
                 
-    heatmap_region_lookup = {}
+    heatmap_region_by_day = {}
+    heat_by_region = {}
+    current_heat = None
     region_index = 0
-    in_region = False
-    gap_threshold = 2
-    gap = 0
+    max_region = 0
     for day in [ str(day) for day in range(1, 32) ]:
-        if day in heatmap and int(heatmap[day]) > 0:
-            gap = 0
-            if not in_region:
-                in_region = True 
-                region_index += 1
-            # if region_index not in heatmap_regions:
-            #     heatmap_regions[region_index] = []
-            heatmap_region_lookup[day] = region_index
-        else:
-            heatmap_region_lookup[day] = 0
-            gap += 1
-            if gap >= gap_threshold and in_region:
-                in_region = False 
-
-    return heatmap_region_lookup
+        
+        if day not in heatmap_normalized:
+            heatmap_region_by_day[day] = 0        
+            continue         
+        
+        this_day_heat = int(heatmap_normalized[day])
+        
+        if current_heat is None or current_heat != this_day_heat:
+            if this_day_heat not in heat_by_region:                
+                region_index = max_region + 1
+                max_region += 1                
+                heat_by_region[this_day_heat] = region_index 
+            else:
+                region_index = heat_by_region[this_day_heat]
+            current_heat = this_day_heat 
+        
+        heatmap_region_by_day[day] = region_index 
+        
+    return heatmap_region_by_day
 
 def get_records_for_filter(records, attribute_filter, heatmap_region_filter=0):
 
@@ -83,9 +87,9 @@ def get_heatmap_data(filtered_records):
     day_set.sort()
     heatmap = { str(day): day_list.count(day) for day in day_set }
     
-    heatmap_region_lookup = _get_heatmap_region_lookup(heatmap)
-
     heatmap_normalized = { n: nearest_whole(heatmap[n]*100.0/len(filtered_records)) for n in heatmap }
+
+    heatmap_region_lookup = _get_heatmap_region_lookup(heatmap, heatmap_normalized)
 
     all_weekdays = [ datetime.strftime(datetime.strptime(str(0), "%w") + timedelta(days=w), "%a") for w in range(7) ]
 

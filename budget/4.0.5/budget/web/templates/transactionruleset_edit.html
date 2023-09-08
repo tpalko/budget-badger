@@ -3,9 +3,10 @@
 <div class="row">
     <div class="col-16">
         <h3>{% if transactionruleset_form.id.value %}Edit{% else %}New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h3>
-        <div id="errors"></div>
+        <div id="form_errors"></div>
     </div>
 </div>
+
 <div class="row">
     <div class="col-9">
         {% if transactionruleset_form.id.value %} 
@@ -31,105 +32,37 @@
                     </div>
                 {% endfor %}        
             </div>
-            <div>
-                {{ transactionrule_formset.management_form }}
-                <div id="forms">
-                    {% for error in transactionrule_formset.errors %} 
-                        {{ error }}
-                    {% endfor %}
-                    {{ transactionrule_formset.non_form_errors }}
-                    {% for form in transactionrule_formset %}
-                        <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
-                            <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>
-                        </div>            
-                    {% endfor %}
-                </div>
-                <a id="another_form" href="#">+</a>            
-            </div>
 
-            <!-- <input type="hidden" name="unaccounted_record_ids" value="" /> -->
-            <input type="hidden" name="submit_event_type" value="" />
+            {% include "_transactionrule_formset.html" %}
 
             <input type="submit" name="save" value="save" />
             <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
-        </form>
-        
-    </div>
-    <div class="col-7">
-        <div id="heatmaps"></div>
+            
+            </form>
     </div>
 </div>
 
-<div id="edit_stats" style="display: none">
-    <div class="row">
-        <div class="col-7">
-            <h3>Stats</h3>
-            Ruleset: <span id="ruleset_evaluated"></span>
-            <div id="recordstats"></div>
-        </div>
-    </div>
-    <div class="row">    
-        <div class="col-7">
-            <h3>Aggregate</h3>
-            <div id="aggregate"></div>            
-        </div>
-        <div class="col-7 col-offset-1">
-            <h3>Matched Records <span id="ruleresults_count"></span></h3>
-            <div style="max-height: 500px;overflow-y:scroll;">
-                <div id="ruleresults"></div>        
-            </div>
-        </div>
-    </div>
-</div>
 
 <script language="javascript">
 
     var form;
-    var controller;
-
+    
     function formSubmit(e) {
-
-        console.log(e);
-
-        form.submit_event_type.value = e.type;
-
-        // if (e.type == "submit") {
-        //     // This is an actual submit, letting the form do its job
-        //     return true;
-        // }
 
         e.preventDefault();
         
-        if (controller != undefined) {
-            controller.abort();            
-        }
-
-        controller = new AbortController()
-
         var options = {
             method: form.method,
             body: new FormData(form),
-            signal: controller.signal
         }
 
-        // if (e.type == "keyup" && e.target.name.match(/-match_value$/)) {
-        //     console.log(e.target.name + ' key upped')
-        // }
-
-        // if (e.target.dataset.keyupped) {
-        //     e.target.dataset.keyupped = 1;
-        // }
-        
         var ruleset_submission = fetch(form.action, options)
             .then((response) => {
                 controller = undefined;
                 var responsej = response.json();
-                if (e.type == "submit") {
-                    document.location = '{% url "transactionrulesets_list" tenant_id=1 %}';
-                } 
-                return responsej;
+                document.location = '{% url "transactionrulesets_list" tenant_id=1 %}';
+                console.error('somehow we did not redirect on the response!')
             })
-            .then(handleMatchResponse)
             .catch((error) => {
                 console.error(error);
             });
@@ -137,147 +70,16 @@
         return false;
     }
 
-    function handleMatchResponse(data) {
-        
-        console.log(data);
-        
-        // -- clear 
-        document.querySelector("#errors").innerText = "";
-        document.querySelector("#ruleresults").replaceChildren();
-        var validationErrors = "";
-
-        if (data.messages) {            
-            validationErrors += data.messages.join("\n") + "\n";
-            // for (var i in data.messages) {
-            //     validationErrors += data.messages[i];
-            // }
-        }
-        if (data.field_messages) {
-            for (var name in data.field_messages) {
-                validationErrors += name + ": " + data.field_messages[name] + "\n";
-            }
-        }
-
-        document.querySelector("#errors").innerText = validationErrors;
-        // }
-
-        // if (!data.success){
-        //     document.querySelector("#errors").innerText = data.messages;
-        if (true) {
-            // form.unaccounted_record_ids.value = data.data.unaccounted_record_ids;
-            
-            document.querySelector("#edit_stats").style.display = "block";
-            document.querySelector("#recordstats").innerHTML = data.data.recordstats;
-            document.querySelector("#aggregate").innerHTML = data.data.aggregate;
-            document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;
-            document.querySelector("#ruleresults").innerHTML = data.data.ruleresults;
-            document.querySelector("#ruleresults_count").innerHTML = data.data.ruleresults_count;
-            document.querySelector("#ruleset_evaluated").innerHTML = data.data.ruleset_evaluated;
-
-            // data.data.records.forEach((record) => {
-            //     var newRecord = document.createElement("div");
-            //     newRecord.innerText = record.transaction_date + "-" + record.description + ": " + record.amount + " (tx:" + (record.transaction ? record.transaction : "no transaction") + ")";
-            //     document.querySelector("#ruleresults").append(newRecord);
-            // })                    
-        }                
-    }
-    
-    function renumberFormDivs() {
-
-        var formDivs = document.querySelectorAll(".formdiv");
-        console.log(form);
-        form['form-TOTAL_FORMS'].value = formDivs.length;
-
-        formDivs.forEach((el, formDivIndex) => {
-
-            var beforeCounter = el.dataset.counter;
-
-            el.dataset.counter = formDivIndex;
-
-            el.querySelectorAll("label").forEach((el, i) => {
-                el.setAttribute('for', el.getAttribute('for').replace('form-' + beforeCounter, 'form-' + formDivIndex));
-            })
-            el.querySelectorAll("select").forEach((el, i) => {
-                el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-                el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-            })
-            el.querySelectorAll("input").forEach((el, i) => {
-                el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-                el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-            })
-            el.querySelector("span.formdivcounter").innerText = formDivIndex + 1;
-            el.querySelector(".minusform").dataset.formdiv = formDivIndex;
-
-            el.id = "formdiv-" + (formDivIndex);
-        });
-    }
-
-    function minusForm(e) {
-        e.preventDefault();
-        var index = e.target.dataset.formdiv;
-        form.querySelector("#formdiv-" + index).remove();
-        renumberFormDivs();
-        formSubmit(e);
-    }
-
     document.addEventListener('DOMContentLoaded', (e) => {
 
-        document.querySelectorAll("[class^='heat-'").forEach((el, i) => {
-            el.addEventListener('click', (e) => {
-                applyFilter('heatmap_region_filter', el.dataset['region']);
-            });
-        });
-        
         form = document.querySelector("#ruleform");
 
-        document.querySelector("#another_form").addEventListener('click', (e) => {
-            
-            e.preventDefault();
-            
-            var cloned = document.querySelector(".formdiv[data-counter='0']").cloneNode(true);
-
-            cloned.querySelectorAll("input").forEach((el, i) => {
-                console.log(el.name);
-                if (!el.name.match(/form-[0-9]+-transactionruleset/)) {
-                    el.value = "";
-                }                
-                el.addEventListener("keyup", formSubmit);
-            })
-
-            cloned.querySelector(".minusform").addEventListener('click', minusForm);
-            // var minusLink = document.createElement("a");
-            // minusLink.innerText = "-";
-            // minusLink.href = "#";
-            // minusLink.addEventListener('click', minusForm);
-            // cloned.appendChild(minusLink);
-
-            document.querySelector("#forms").append(cloned);
-            renumberFormDivs();
-        })
-
         form.addEventListener('submit', formSubmit);
-
-        form.querySelectorAll("select").forEach((el, i) => {
-            el.addEventListener('blur', formSubmit);
-            el.addEventListener('change', formSubmit);
-        })
-
-        form.querySelectorAll("input").forEach((el, i) => {
-            el.addEventListener('keyup', formSubmit);
-            el.addEventListener('blur', formSubmit);
-        })
-
-        form.querySelectorAll(".minusform").forEach((el, i) => {
-            el.addEventListener('click', minusForm);
-        })
 
         // document.querySelector("input[name='rule']").addEventListener('keyup', updateResults);
         // document.querySelector("select[name='operation']").addEventListener('change', updateResults);
         // document.querySelector("select[name='recordfield']").addEventListener('change', updateResults);
 
-        {% if transactionruleset_form.id.value %}
-        formSubmit(e);
-        {% endif %}
     });
 
 </script>

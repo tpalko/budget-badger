@@ -4,7 +4,7 @@ from django.forms import Form, ModelChoiceField, ModelForm, HiddenInput, CharFie
 from django.forms.models import modelformset_factory, BaseModelFormSet
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
-from web.models import BaseModel, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
+from web.models import BaseModel, Settings, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
 import logging 
 import web.util.dates as utildates
 from web.util.modelutil import TransactionTypes, choiceify
@@ -90,6 +90,21 @@ class TransactionRuleSetForm(ModelForm):
             kwargs['instance'] = TransactionRuleSet(priority=max_priority)
 
         super(TransactionRuleSetForm, self).__init__(*args, **kwargs)
+
+class TransactionRuleSetChoiceField(ModelChoiceField):
+    def label_from_instance(self, obj):
+        return f'{obj.name} (priority {obj.priority}, joined with {obj.join_operator}, {len(obj.records())} records)'
+
+class SorterForm(Form):
+
+    rule_form = TransactionRuleForm()
+    ruleset = TransactionRuleSetChoiceField(queryset=TransactionRuleSet.objects.filter(is_auto=False).order_by('priority'), label="Some Rule Set")
+
+
+class SettingForm(ModelForm):
+    class Meta:
+        model = Settings
+        fields = ['name', 'value']
 
 class RecordFormatForm(ModelForm):
 

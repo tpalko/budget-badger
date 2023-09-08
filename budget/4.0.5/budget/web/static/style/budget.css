@@ -75,13 +75,19 @@ body.dark #tabs > div.selected {
 ul.menu > li,
 ul.tabs > li {
 	display: inline-block;
-	padding: 12px;
+	padding: 5px;	
+	text-align: center;	
 	width: 175px;	
-	text-align: center;
 	border: 3px solid #33cc33;
-	align-items: center;
+	
 	/* color: #999999; */
 	font-weight: bold;
+}
+
+ul.menu > li {
+	width: 140px;
+	font-size: 0.7em;
+	height: 30px;		
 }
 
 ul.menu > li.selected {
@@ -210,57 +216,69 @@ td[class*="heat-"] span.heatmap_region {
 	font-size: x-small;
 }
 
-.heat-4,
-.heat-5,
-.heat-6,
-.heat-7,
-.heat-8 {
+.heat-4 {
 	background-color: #ffffcc;
 }
 
-.heat-10 {
+.heat-5 {
 	background-color: #ffff99;
 }
 
-.heat-12 {
+.heat-6 {
 	background-color: #ffff66;
 }
 
-.heat-20 {
+.heat-7 {
 	background-color: #ffff33;
 }
 
-.heat-30 {
+.heat-8 {
 	background-color: #ffff00;
 }
 
-.heat-40 {
+.heat-10 {
 	background-color: #ffcc00;
 }
 
-.heat-50 {
-	background-color: #ffa500;
+.heat-12 {
+	background-color: #ff9900;
 }
 
-.heat-60 {
+.heat-20 {
 	background-color: #ff6600;
 }
 
-.heat-70 {
+.heat-30 {
 	background-color: #ff3300;
 }
 
-.heat-80 {
+.heat-40 {
 	background-color: #ff0000;
+}
+
+.heat-50 {
+	background-color: #ff0000;
+}
+
+.heat-60 {
+	background-color: #ff0000;
+}
+
+.heat-70 {
+	background-color: #cc0000;
+}
+
+.heat-80 {
+	background-color: #990000;
 	color: white;
 }
 
 .heat-90 {
-	background-color: #cc0000;
+	background-color: #660000;
 	color: white;
 }
 
 .heat-100 {
-	background-color: #990000;
+	background-color: #330000;
 	color: white;
 }
