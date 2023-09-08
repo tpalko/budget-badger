@@ -10,13 +10,14 @@ import sys
 from datetime import datetime, timedelta
 import logging
 import traceback
-from web.forms import new_transaction_rule_form_set, form_types, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, Settings, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
+from web.forms import new_transaction_rule_form_set, form_types, PropertyForm, VehicleForm, EventForm, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
+from web.models import records_from_rules, Property, Vehicle, Event, Settings, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
 from web.util.viewutil import alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
+from web.util.ruleindex import get_record_rule_index
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
 # from django.core import serializers
 
@@ -41,8 +42,20 @@ def model_list(request, tenant_id):
     accounts = Account.objects.order_by('id')
     creditcards = CreditCard.objects.all()
     recordformats = RecordFormat.objects.all()
+    properties = Property.objects.all()
+    vehicles = Vehicle.objects.all()
+    events = Event.objects.all()
 
-    return render(request, "model_list.html", {'accounts': accounts, 'creditcards': creditcards, 'recordformats': recordformats})
+    context = {
+        'accounts': accounts, 
+        'creditcards': creditcards, 
+        'recordformats': recordformats,
+        'properties': properties,
+        'vehicles': vehicles,
+        'events': events,
+    }
+
+    return render(request, "model_list.html", context)
 
 model_map = {
     'creditcard': {
@@ -56,6 +69,18 @@ model_map = {
     'recordformat': {
         'model': RecordFormat,
         'form': RecordFormatForm 
+    },
+    'property': {
+        'model': Property,
+        'form': PropertyForm 
+    },
+    'vehicle': {
+        'model': Vehicle,
+        'form': VehicleForm 
+    },
+    'event': {
+        'model': Event,
+        'form': EventForm 
     }
 }
 
@@ -148,6 +173,7 @@ def get_transactionrule_formset(transactionruleset_id=None):
 
 def recordmatcher(request, tenant_id, transactionruleset_id=None):
 
+   
     response = {
         'success': False,
         'form_errors': [],
@@ -165,19 +191,64 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
 
         try:
 
-            transactionruleset = None             
+            '''
+            rules, new formset
 
-            if 'transactionruleset_id' in request.POST and request.POST['transactionruleset_id'] and transactionruleset_id is None:
-                transactionruleset_id = request.POST['transactionruleset_id']
+                name:           retirement
+                join_operator:  and
+                priority:       59
+                id: 
+                
+            rules, edit formset
 
-            if transactionruleset_id:
+                name:           EPP copays
+                join_operator:  and
+                priority:       2
+                id:             50153
+            
+            sorter, no rule set 
+            
+                ruleset: 
+            
+            sorter, rule set 
+            
+                ruleset:        41076
+            
+            '''
+
+            default_join_operator = TransactionRuleSet.JOIN_OPERATOR_OR
+            default_priority = 0
+
+            transactionruleset_form = TransactionRuleSetForm(request.POST)
+            transactionruleset = None     
+
+            validate_ruleset_form = False 
+            pre_ruleset = True 
+            join_operator = default_join_operator
+            priority = default_priority
+            
+            if transactionruleset_id is None:                
+                if 'id' in request.POST:
+                    if request.POST['id']:
+                        transactionruleset_id = request.POST['id']
+                        pre_ruleset = False 
+                    validate_ruleset_form = True 
+                elif 'ruleset' in request.POST and request.POST['ruleset']:
+                    transactionruleset_id = request.POST['ruleset']
+            
+            if transactionruleset_id is not None:            
                 transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
+                transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)
+            
+            if validate_ruleset_form:
+                transactionruleset_form.is_valid()
+                join_operator = transactionruleset_form.cleaned_data['join_operator']
+                priority = transactionruleset_form.cleaned_data['priority']
+            elif transactionruleset:
+                join_operator = transactionruleset.join_operator
+                priority = transactionruleset.priority
 
-            # TODO: only validate if we're actually submitting a ruleset form 
-            # -- which is only on the rules page, for now
-            # transactionruleset_form.is_valid()
-
-            transactionrule_formset.is_valid(preRuleSet=transactionruleset_id is None)
+            transactionrule_formset.is_valid(preRuleSet=pre_ruleset)
             
             logger.warning(f'Getting records from {[ form.cleaned_data for form in transactionrule_formset ]}')
 
@@ -185,9 +256,8 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
             # -- sort of.. just the forms that hold the fields for the objects
             filters = [ TransactionRuleLogic(TransactionRule(**form.cleaned_data)) for form in transactionrule_formset ]
             # filters = [ f for f in filters if f ]
-            record_queryset = records_from_rules(filters, transactionruleset.join_operator if transactionruleset else TransactionRuleSet.JOIN_OPERATOR_OR)
-
-            record_queryset = RecordGrouper.filter_accounted_records(record_queryset, less_than_priority=transactionruleset.priority if transactionruleset else 0, is_auto=False)
+            record_queryset = records_from_rules(filters, join_operator)
+            pared_record_queryset = RecordGrouper.filter_accounted_records(record_queryset, less_than_priority=priority, is_auto=False)
 
             # record_queryset = None
             # for form in transactionrule_formset:                                                  
@@ -202,7 +272,7 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
                 'amount': r.amount, 
                 'account': r.uploaded_file.account.name if r.uploaded_file.account else r.uploaded_file.creditcard.name,              
                 'extra_fields': r.extra_fields
-            } for r in record_queryset ]
+            } for r in pared_record_queryset ]
             
             response['data']['records'] = record_data 
 
@@ -211,13 +281,14 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
             
             recordstats = {
                 'total_record_count': len(record_data),
+                'accounted_records_removed': len(record_queryset) - len(pared_record_queryset),
                 # 'unaccounted_record_count': len(unaccounted_record_ids),
-                **get_records_template_data(record_queryset)
+                **get_records_template_data(pared_record_queryset)
             }
 
             response['data']['recordstats'] = render_to_string("_recordstats.html", context=recordstats)
             response['data']['aggregate'] = render_to_string("_ruleset_aggregate.html", context=recordstats)
-            response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(record_queryset) })
+            response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(pared_record_queryset) })
             response['data']['ruleresults'] = render_to_string("_ruleresults.html", context={ 'records': record_data })                    
             response['data']['ruleset_evaluated'] = "<br />".join([ str(f.instance) for f in transactionrule_formset.forms ])
             
@@ -481,8 +552,13 @@ def filters(request, tenant_id):
                     } for assoc in checking ]
         
         records_by_type[record_type] = template_models
-        
-    return render(request, "filters.html", {'records': records_by_type, 'template_models': template_models, 'record_types': RecordMeta.RECORD_TYPES})
+    
+    context = {
+        'records': records_by_type, 
+        'template_models': template_models        
+    }
+
+    return render(request, "filters.html", context)
 
 def update_record_type(request, tenant_id, record_id):
 
@@ -546,7 +622,7 @@ def records(request, tenant_id):
         'records': Record.objects.filter(uploaded_file__creditcard=c)
     } for c in CreditCard.objects.all() ]
 
-    record_rules = RecordGrouper.get_record_rule_index()
+    record_rules = get_record_rule_index(TransactionRuleSet.objects.all())
 
     # -- post processing 
     for a in records_by_account:
@@ -663,7 +739,12 @@ def files(request, tenant_id):
 
 def sorter(request, tenant_id):
 
-    records = RecordGrouper.filter_accounted_records(Record.objects.all().order_by('amount'), is_auto=False)
+    records = RecordGrouper.filter_accounted_records(
+        Record.objects
+            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
+            .order_by('amount'), 
+        is_auto=False
+    )
     
     form = SorterForm()
 

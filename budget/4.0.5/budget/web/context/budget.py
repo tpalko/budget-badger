@@ -7,6 +7,7 @@ from django.urls import resolve
 from django.db.models import Q
 
 from web.util.viewutil import get_querystring
+from web.models import RecordMeta
 
 def budget_context(request_context):
     '''Dynamically determine conventionally named js include file'''
@@ -60,5 +61,6 @@ def budget_context(request_context):
 
     return {
         'debug': debug,
-        'menu': menu
+        'menu': menu,
+        'record_types': RecordMeta.RECORD_TYPES
     }

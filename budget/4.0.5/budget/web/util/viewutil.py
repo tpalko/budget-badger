@@ -79,12 +79,17 @@ def get_records_for_filter(records, attribute_filter, heatmap_region_filter=0):
 def get_heatmap_data(filtered_records):
 
     date_list = [ r.transaction_date for r in filtered_records ]
-        
+    
+    day_list = [ d.day for d in date_list ]
+    month_list = [ d.month for d in date_list ]
     weekdays = [ datetime.strftime(d, "%a") for d in date_list ]
+
+    month_heatmap = { m: month_list.count(m) for m in set(month_list) }
+
     weekday_heatmap = { j: weekdays.count(j) for j in set(weekdays) }
     weekday_heatmap_normalized = { j: nearest_whole(weekday_heatmap[j]*100.0/len(filtered_records)) for j in weekday_heatmap }
 
-    day_list = [ d.day for d in date_list ]
+    
     day_set = list(set(day_list))
     day_set.sort()
     heatmap = { str(day): day_list.count(day) for day in day_set }

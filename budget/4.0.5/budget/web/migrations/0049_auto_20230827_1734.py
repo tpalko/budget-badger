@@ -6,7 +6,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 def forwards_func(apps, schema_editor):
-
+    '''
+    scan all records. if extra_fields_hash is missing, populate it and save. 
+    look for the matching recordmeta record and if missing, create it using the record_type of the original Record. 
+    if recordmeta is present, ensure the record_type matches the original record.
+    '''
+    
     Record = apps.get_model("web", "Record")
     RecordMeta = apps.get_model("web", "RecordMeta")
 

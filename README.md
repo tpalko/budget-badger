@@ -44,7 +44,13 @@ Transactions and Credit Card Expenses, if you haven't noticed by now, are built 
 
 Once a group of Records is made, the hard part is over. The system can analyze the Records in a group gather enough information to build a Transaction or Credit Card Expense. You can of course review the work and make any corrections. The source of truth is the set of records themselves. The only other persistent data in the system are the rules you create, groups you manually define with individual records, and the Transactions and Credit Card Expenses you manually create or modify. Everything else is filled in automatically and the entire workflow will adapt as you add new records to the history. This means the more coverage you can achieve with Rules to group records and the less manual intervention you need to take, the more responsive the system will be.
 
+Whether records are grouped, typed, annotated, and analyzed automatically or manually, there is a finite set of classifications they  ultimately fall into:
 
+* recurring or otherwise steady stream we can rely on for a weekly, monthly or yearly sum
+* associated with a one-time event
+* internal transfers between accounts
+
+Of the three, only the first is something we want to include in budget or projection analysis. It's interesting to know how much money was spent during a vacation, but unless it's an expected, recurring outing (in which case it would actually fall under the first category), we want to file associated records against an Event and exclude it from further analysis. 
 
 
 ### Manually add any expected future Transactions or Credit Card Expenses

@@ -12,6 +12,7 @@ import hashlib
 import json 
 import web.util.dates as utildates
 from web.util.modelutil import choiceify, TransactionTypes
+from web.util.ruleindex import wipe_rule_index_cache
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,12 @@ class UploadedFile(BaseModel):
     def account_name(self):
         return self.account.name if self.account else self.creditcard.name if self.creditcard else "-no acct/cc-"
     
+class Event(BaseModel):
+
+    name = models.CharField(max_length=255)
+    started_at = models.DateField(null=False)
+    ended_at = models.DateField(null=True)
+
 class Property(BaseModel):
 
     name = models.CharField(max_length=255)
@@ -194,6 +201,8 @@ class TransactionRuleSet(BaseModel):
     
     def save(self, *args, **kwargs):
         super(TransactionRuleSet, self).save(*args, **kwargs)
+
+        wipe_rule_index_cache()
 
         trs = TransactionRuleSet.objects.all().order_by('priority')
         curr = None 
@@ -282,8 +291,7 @@ class ProtoTransaction(BaseModel):
 
     EXCLUDE_STAT_FIELDS = ['record_count', 'record_ids']
 
-    transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)    
-    property = models.ForeignKey(to=Property, related_name='prototransactions', on_delete=models.SET_NULL, null=True)
+    transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)        
     name = models.CharField(max_length=200, unique=True)
     tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
     transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
@@ -562,14 +570,20 @@ class RecordMeta(BaseModel):
 
     extra_fields_hash = models.CharField(max_length=32, null=True)
     record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)
+    property = models.ForeignKey(to=Property, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
+    vehicle = models.ForeignKey(to=Vehicle, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
+    event = models.ForeignKey(to=Event, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
+    target = models.CharField(max_length=50, null=True)
     detail = models.TextField(null=False, blank=True)
+    is_accounted = models.BooleanField(null=False, default=False)
 
 
 class RecordTypeManager(models.Manager):
 
     def get_queryset(self):
         meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
-        return super().get_queryset().annotate(meta_record_type=meta_join.values('record_type'))
+        annotated = super().get_queryset().annotate(meta_record_type=meta_join.values('record_type'))
+        return annotated # .filter(transaction_date__gte='2022-01-01', transaction_date__lt='2023-01-01')
 
     def filter_type(self, record_type):        
         return self.filter(meta_record_type=record_type)
@@ -618,9 +632,13 @@ class Record(BaseModel):
         self.extra_fields_hash = hashlib.md5(json.dumps(self.extra_fields, sort_keys=True, ensure_ascii=True).encode('utf-8')).hexdigest()
         logger.info(f'record saving with hash {self.extra_fields_hash}: {args}')
 
-        logger.info(f'Record -- pre super')
+        meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
+        if not meta:
+            logger.info(f'meta record missing, creating now from record')
+            new_meta = RecordMeta.objects.create(extra_fields_hash=self.extra_fields_hash)
+            logger.info(f'meta record {new_meta.id} created')
+
         super(Record, self).save(*args, **kwargs)
-        logger.info(f'Record -- post super')
 
     #     self.clean()
     #     matches = Record.objects.filter(

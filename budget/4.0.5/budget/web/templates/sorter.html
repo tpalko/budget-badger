@@ -7,7 +7,7 @@
 
 <div>
     <div id="form_errors"></div>
-    
+
     <form id="ruleform">
         {% csrf_token %}
 
@@ -23,13 +23,23 @@
 
 <table class="clicky-table">
     {% for record in records %}
-        <tr>
+        <tr title="{{ record.extra_fields }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %} {% if record_rules|lookup:record.id %}accounted{% else %}{% endif %}">
+            <td>
+                {{ record.transaction_date }}
+            </td>
+            <td>
+                {{ record.uploaded_file.account_name }}
+            </td>
             <td>
                 {{ record.description }}
             </td>
             <td>
                 {{ record.amount }}
             </td>
+            <td>
+                {% include "_record_type_select.html" %}
+            </td>
+
         </tr>
     {% endfor %}
 </table>

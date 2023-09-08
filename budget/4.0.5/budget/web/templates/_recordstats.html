@@ -2,7 +2,7 @@
 
 <div>
     <ul>
-        <li>Records: {{ total_record_count }}</li>
+        <li>Records: {{ total_record_count }} <span style="color: red; font-style: italic;">{{ accounted_records_removed }} accounted and removed</span></li>
         <li>Total: ${{ amount_sum|format_currency }}</li>
         <li>{{ earliest_date }} to {{ latest_date }} ({{ days }} days, {{ months }} months)</li>
         <li>{{ records_per_month }} records per month</li>        

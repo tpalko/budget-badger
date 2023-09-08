@@ -114,8 +114,92 @@
     </table>
 </div>
 
+<h2>Property Management</h2>
 
+<a href="{% url "model_edit" tenant_id=1 model_name="property" %}">new property</a>
 
+<div class="row">
+    <div class="col-16">
+        <table>
+            <tr>
+                <th>Name</th>                
+                <th>Address</th>                
+                <th></th>
+            </tr>
+    {% for property in properties %}
+
+        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ property.name }}</td>            
+            <td>{{ property.address }}</td>
+            <td>
+                <a href="{% url "model_edit" model_name="property" tenant_id=1 model_id=property.id %}">edit</a>
+                <a href="{% url "model_edit" model_name="property" tenant_id=1 model_id=property.id %}" class="delete">delete</a>
+            </td>
+        </tr>
+
+    {% endfor %}
+    </table>
+</div>
+
+<h2>Vehicle Management</h2>
+
+<a href="{% url "model_edit" tenant_id=1 model_name="vehicle" %}">new vehicle</a>
+
+<div class="row">
+    <div class="col-16">
+        <table>
+            <tr>
+                <th>Name</th>                
+                <th>Make</th>                
+                <th>Model</th>                
+                <th>Year</th>                
+                <th></th>
+            </tr>
+    {% for vehicle in vehicles %}
+
+        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ vehicle.name }}</td>            
+            <td>{{ vehicle.make }}</td>            
+            <td>{{ vehicle.model }}</td>            
+            <td>{{ vehicle.year }}</td>            
+            <td>
+                <a href="{% url "model_edit" model_name="vehicle" tenant_id=1 model_id=vehicle.id %}">edit</a>
+                <a href="{% url "model_edit" model_name="vehicle" tenant_id=1 model_id=vehicle.id %}" class="delete">delete</a>
+            </td>
+        </tr>
+
+    {% endfor %}
+    </table>
+</div>
+
+<h2>Event Management</h2>
+
+<a href="{% url "model_edit" tenant_id=1 model_name="event" %}">new event</a>
+
+<div class="row">
+    <div class="col-16">
+        <table>
+            <tr>
+                <th>Name</th>                
+                <th>Started</th>
+                <th>Ended</th>
+                <th></th>
+            </tr>
+    {% for event in events %}
+
+        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ event.name }}</td>         
+            <td>{{ event.started_at }}</td>   
+            <td>{{ event.ended_at }}</td>
+            <td>
+                <a href="{% url "model_edit" model_name="event" tenant_id=1 model_id=event.id %}">edit</a>
+                <a href="{% url "model_edit" model_name="event" tenant_id=1 model_id=event.id %}" class="delete">delete</a>
+            </td>
+        </tr>
+
+    {% endfor %}
+    </table>
+</div>
 
 {% endblock %}
 
