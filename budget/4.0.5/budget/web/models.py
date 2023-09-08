@@ -38,7 +38,7 @@ class RecordFormat(BaseModel):
     name = models.CharField(max_length=50)
     csv_columns = models.CharField(max_length=1024, null=True)
     flow_convention = models.CharField(max_length=10, choices=choiceify([FLOW_CONVENTION_NORMAL, FLOW_CONVENTION_REVERSE]), null=False, default=FLOW_CONVENTION_NORMAL)
-    csv_date_format = models.CharField(max_length=20, null=True)
+    csv_date_format = models.CharField(max_length=20, null=False, default="%m/%d/%Y")
 
     def __str__(self):
         return f'{self.name}'
@@ -98,6 +98,29 @@ class CreditCard(BaseModel):
     def accounted_records(self):
         return self.records.filter(creditcardexpense__isnull=False)
 
+class UploadedFile(BaseModel):
+
+    recordformat = None 
+
+    upload = models.FileField(upload_to='uploads/')
+    account = models.ForeignKey(to=Account, related_name='uploadedfiles', on_delete=models.CASCADE, null=True, blank=True)
+    creditcard = models.ForeignKey(to=CreditCard, related_name='uploadedfiles', on_delete=models.PROTECT, null=True, blank=True)
+    original_filename = models.CharField(max_length=255, unique=True, null=True)    
+    header_included = models.BooleanField(null=False, default=True)
+    first_date = models.DateField(null=True)
+    last_date = models.DateField(null=True)
+    record_count = models.IntegerField(null=False, default=0)
+
+    def __init__(self, *args, **kwargs):
+        super(UploadedFile, self).__init__(*args, **kwargs)
+        if self.account:
+            self.recordformat = self.account.recordformat 
+        elif self.creditcard:
+            self.recordformat = self.creditcard.recordformat 
+    
+    def account_name(self):
+        return self.account.name if self.account else self.creditcard.name if self.creditcard else "-no acct/cc-"
+    
 class Property(BaseModel):
 
     name = models.CharField(max_length=255)
@@ -512,29 +535,6 @@ class PlannedPayment(models.Model):
     payment_at = models.DateField()
     balance = models.DecimalField(decimal_places=2, max_digits=20, default=0)
 
-class UploadedFile(BaseModel):
-
-    recordformat = None 
-
-    upload = models.FileField(upload_to='uploads/')
-    account = models.ForeignKey(to=Account, related_name='uploadedfiles', on_delete=models.CASCADE, null=True, blank=True)
-    creditcard = models.ForeignKey(to=CreditCard, related_name='uploadedfiles', on_delete=models.PROTECT, null=True, blank=True)
-    original_filename = models.CharField(max_length=255, unique=True, null=True)    
-    header_included = models.BooleanField(null=False, default=True)
-    first_date = models.DateField(null=True)
-    last_date = models.DateField(null=True)
-    record_count = models.IntegerField(null=False, default=0)
-
-    def __init__(self, *args, **kwargs):
-        super(UploadedFile, self).__init__(*args, **kwargs)
-        if self.account:
-            self.recordformat = self.account.recordformat 
-        elif self.creditcard:
-            self.recordformat = self.creditcard.recordformat 
-    
-    def account_name(self):
-        return self.account.name if self.account else self.creditcard.name if self.creditcard else "-no acct/cc-"
-    
 # class RecordGroup(BaseModel):
 #     name = models.CharField(max_length=255)
 #     stats = models.JSONField(null=True)

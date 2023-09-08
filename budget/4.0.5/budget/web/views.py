@@ -16,7 +16,7 @@ from web.util.viewutil import get_heatmap_data, get_records_template_data, trans
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
-from web.util.viewutil import process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
+from web.util.viewutil import alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
 # from django.core import serializers
 
@@ -588,41 +588,69 @@ def files(request, tenant_id):
 
         uploadedfile_form = UploadedFileForm(request.POST, request.FILES)
 
-        if uploadedfile_form.is_valid():
+        try:
+                
+            if uploadedfile_form.is_valid():
 
-            logger.debug(uploadedfile_form.cleaned_data)
-            
-            logger.warning(f'{uploadedfile_form.cleaned_data["upload"]} is valid')
-            uploadedfile = uploadedfile_form.save()
-            uploadedfile.refresh_from_db()
-            # uploadedfile = UploadedFile.objects.get(pk=uploadedfile.id)
+                logger.debug(uploadedfile_form.cleaned_data)
+                
+                logger.warning(f'{uploadedfile_form.cleaned_data["upload"]} is valid')
 
-            # logger.debug(uploadedfile.creditcard.recordtype.csv_columns)
+                # -- grab this value now, because the save call removes it (no column for it)
+                new_type = uploadedfile_form.cleaned_data['new_type']
 
-            try:
-                file_details = process_uploaded_file(uploadedfile)
-                uploadedfile.first_date = file_details['first_date']
-                uploadedfile.last_date = file_details['last_date']
-                uploadedfile.record_count = len(file_details['records'])
-                uploadedfile.save()
+                uploadedfile = uploadedfile_form.save()
+                uploadedfile.refresh_from_db()
+                # uploadedfile = UploadedFile.objects.get(pk=uploadedfile.id)
 
-                save_processed_records(file_details['records'], uploadedfile)
+                # logger.debug(uploadedfile.creditcard.recordtype.csv_columns)
 
-                # try:
-                #     RecordGrouper.group_records()
-                # except:
-                #     message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: failed to group records after file upload {uploadedfile.id}'
-                #     logger.warning(message)
-                #     traceback.print_tb(sys.exc_info()[2])
+                try:
+                    file_details = process_uploaded_file(uploadedfile)
+                    uploadedfile.first_date = file_details['first_date']
+                    uploadedfile.last_date = file_details['last_date']
+                    uploadedfile.record_count = len(file_details['records'])
+                    uploadedfile.save()
 
-                return redirect('records', tenant_id=tenant_id)
+                    # -- at this point, the record format we have found or created has zero to many accounts or credit cards associated with it
+                    # -- however, the form submitted has not chosen any of them or we would have found our format through it, above
+                    # -- so we're creating a new account or credit card based on the filename
+                    if new_type == 'account':
+                        new_account = Account.objects.create(
+                            recordformat=file_details['recordformat'], 
+                            name=alphaize_filename(uploadedfile.original_filename)
+                        )
+                        uploadedfile.account = new_account
+                        uploadedfile.save()
+                    elif new_type == 'creditcard':
+                        new_creditcard = CreditCard.objects.create(
+                            recordformat=file_details['recordformat'], 
+                            name=alphaize_filename(uploadedfile.original_filename)
+                        )
+                        uploadedfile.creditcard = new_creditcard 
+                        uploadedfile.save()
 
-            except:
-                message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: therefore, deleting uploaded file {uploadedfile.id}'
-                logger.warning(message)
-                traceback.print_tb(sys.exc_info()[2])
-                uploadedfile.delete()
-            
+                    save_processed_records(file_details['records'], uploadedfile)
+
+                    # try:
+                    #     RecordGrouper.group_records()
+                    # except:
+                    #     message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: failed to group records after file upload {uploadedfile.id}'
+                    #     logger.warning(message)
+                    #     traceback.print_tb(sys.exc_info()[2])
+
+                    return redirect('records', tenant_id=tenant_id)
+
+                except:
+                    message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: This object could not be processed, therefore we are deleting the associated uploaded file {uploadedfile.id}'
+                    logger.warning(message)
+                    traceback.print_tb(sys.exc_info()[2])
+                    uploadedfile.delete()
+        except:
+            message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
+            logger.warning(message)
+            uploadedfile_form.add_error(field=None, error=message)
+            traceback.print_tb(sys.exc_info()[2])
             
                 
     template_data = {

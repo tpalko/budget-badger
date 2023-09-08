@@ -39,7 +39,7 @@ def get_records_from_csv(data, columns, header_included):
     records = []
     line = ""
     start_line = 1 if header_included else 0
-    lines = data.decode('utf-8').split('\n')[start_line:]
+    lines = data[start_line:]
 
     logger.info(f'data has {len(lines)} lines, header included {header_included}')
 

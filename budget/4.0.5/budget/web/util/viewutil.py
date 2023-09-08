@@ -1,4 +1,6 @@
 import json 
+import re
+import base64
 from web.util.stats import nearest_whole
 from web.util.recordgrouper import RecordGrouper
 from web.util.modelutil import TransactionTypes
@@ -197,6 +199,16 @@ def _must_amount(record, flow_convention):
     
     return amount
 
+def alphaize_filename(filename):
+    nums = re.findall('[0-9]+', filename)
+    nums.sort(key=lambda a: int(a), reverse=True)
+    for n in nums:
+        filename = filename.replace(n, '')
+    return filename.replace('-', '').replace('_', '')
+
+def base64_encode(val, truncate_digits=16):
+    return base64.standard_b64encode(bytes(val, 'utf-8')).decode()[0:truncate_digits]
+
 def _process_records(records, csv_date_format, flow_convention):
     '''Field conversions, formatting (and potentially additions)'''
 
@@ -224,27 +236,42 @@ def _process_records(records, csv_date_format, flow_convention):
 def process_uploaded_file(uploaded_file):
     '''Ingestion of CSV file to database'''
 
-    file_contents = uploaded_file.upload.read()
+    try:
+        file_contents = uploaded_file.upload.read().decode('utf-8').split('\n')
+    except:
+        raise Exception("Could not read and parse the uploaded file contents")
 
-    recordformat = None 
+    this_format = None 
 
     if uploaded_file.account:
-        recordformat = uploaded_file.account.recordformat 
+        this_format = uploaded_file.account.recordformat 
     elif uploaded_file.creditcard:
-        recordformat = uploaded_file.creditcard.recordformat 
-    else:
-        raise Exception("Uploaded file {uploaded_file.id} has neither account nor credit card association")
+        this_format = uploaded_file.creditcard.recordformat 
+    elif uploaded_file.header_included:
+        first_line = file_contents[0]
+        cleaned_tokens = ",".join([ t.strip().lower().replace(' ', '_').replace('/', '_') for t in first_line.split(',') ])
+        formats = RecordFormat.objects.filter(csv_columns=cleaned_tokens)
+        
+        if len(formats) > 1:
+            raise Exception("CSV columns in the provided file match more than one record format on file")
+        if len(formats) == 0:
+            this_format = RecordFormat.objects.create(
+                name=alphaize_filename(uploaded_file.original_filename), 
+                csv_columns=cleaned_tokens
+            )
+        if len(formats) == 1:
+            this_format = formats[0]
     
-    header_included = uploaded_file.header_included
     records = [] 
 
     try:
         # -- do a little preprocessing so we can avoid duplicating uploaded files 
-        raw_records = get_records_from_csv(file_contents, recordformat.csv_columns.split(','), header_included)
-        records = _process_records(raw_records, recordformat.csv_date_format, recordformat.flow_convention)
-    except:      
+        raw_records = get_records_from_csv(file_contents, this_format.csv_columns.split(','), uploaded_file.header_included)
+        records = _process_records(raw_records, this_format.csv_date_format, this_format.flow_convention)
+    except e:      
         logger.error(f'{sys.exc_info()[0]} {sys.exc_info()[1]}')
         traceback.print_tb(sys.exc_info()[2])  
+        raise Exception(f'No records could be processed from this uploaded file: {e}')
         # logger.warning(f'failed to process with assigned record type, will try amex basic and combined (god help you if these are not amex transactions)')
         # basic_recordformat = Recordformat.objects.filter(name='amex basic').first()
         # combined_recordformat = Recordformat.objects.filter(name='amex combined').first()
@@ -257,9 +284,6 @@ def process_uploaded_file(uploaded_file):
         #     except:
         #         logger.warning(f'processing records with {t.name} failed')
 
-    if not records:
-        raise Exception(f'No records could be processed from this uploaded file')
-    
     records_dates = [ r['transaction_date'] for r in records ]
     first_date = min(records_dates)
     last_date = max(records_dates)
@@ -267,7 +291,8 @@ def process_uploaded_file(uploaded_file):
     return {
         'first_date': first_date,
         'last_date': last_date,
-        'records': records
+        'records': records,
+        'recordformat': this_format
     } 
 
 def save_processed_records(records, uploadedfile):

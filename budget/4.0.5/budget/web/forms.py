@@ -82,7 +82,9 @@ class TransactionRuleSetForm(ModelForm):
         i = kwargs['instance'] if 'instance' in kwargs else TransactionRuleSet()
 
         trs = TransactionRuleSet.objects.filter(is_auto=i.is_auto)
-        max_priority = max([ rs.priority for rs in trs ]) + 1
+        max_priority = 0
+        if len(trs) > 0:
+            max_priority = max([ rs.priority for rs in trs ]) + 1
 
         if 'instance' in kwargs:
             kwargs['instance'].priority = kwargs['instance'].priority or max_priority
@@ -175,9 +177,11 @@ class UploadedFileForm(ModelForm):
     class Meta:
         model = UploadedFile 
         fields = ['upload', 'account', 'creditcard', 'original_filename', 'header_included']
-    
+        exclude = ['new_type']
+        
     original_filename = CharField(widget=HiddenInput())
     header_included = BooleanField(initial=True)
+    new_type = ChoiceField(choices=choiceify(['no new type', 'account', 'creditcard']), required=False)
 
     def __init__(self, *args, **kwargs):
         post_copy = None 
@@ -201,10 +205,20 @@ class UploadedFileForm(ModelForm):
 
         super(UploadedFileForm, self).is_valid()
 
-        if not self.cleaned_data['account'] and not self.cleaned_data['creditcard']:
-            raise ValidationError(_('One of account or creditcard must be set.'))
+        if self.cleaned_data['new_type'] == 'no new type' and not self.cleaned_data['account'] and not self.cleaned_data['creditcard']:
+            raise ValidationError(_('One of account or creditcard must be set or a new type selected.'))
         
+        # if 'new_type' in self.cleaned_data:
+        #     del self.cleaned_data['new_type']
+
         return True 
+    
+    def save(self):
+
+        # if 'new_type' in self.cleaned_data:
+        #     del self.cleaned_data['new_type']
+
+        return super(UploadedFileForm, self).save()
     
 class AccountForm(ModelForm):
 
