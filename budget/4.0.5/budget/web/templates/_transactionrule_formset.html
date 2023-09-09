@@ -2,10 +2,13 @@
 <div>
     {{ transactionrule_formset.management_form }}
     <div id="transactionrule_formset">
-        {% for error in transactionrule_formset.errors %} 
-            {{ error }}
+        {% for form in transactionrule_formset %}
+            {% for error in form.errors %} 
+                {{ error }}
+            {% endfor %}
+            {{ form.non_form_errors }}
         {% endfor %}
-        {{ transactionrule_formset.non_form_errors }}
+        
         {% for form in transactionrule_formset %}
             <div class="formdiv" id="formdiv-{{ forloop.counter0 }}" data-counter="{{ forloop.counter0 }}">                    
                 <span class="formdivcounter">{{ forloop.counter }}</span>: {{ form }} <a href="#" data-formdiv="{{ forloop.counter0 }}" class="minusform">-</a>

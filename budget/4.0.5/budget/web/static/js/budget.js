@@ -42,6 +42,7 @@ function handleDeleteClick(e) {
 	}
 	fetch(e.target.href, options)
 		.then((response) => {
+			console.log(response);
 			document.location = document.location;
 		})
 		.catch((error) => {

@@ -18,6 +18,7 @@ from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
 from web.util.viewutil import alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 from web.util.ruleindex import get_record_rule_index
+from web.util.tokens import tokenize_records
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
 # from django.core import serializers
 
@@ -161,7 +162,7 @@ def get_transactionrule_components(request, transactionruleset_id):
 
     return transactionruleset, transactionrule_formset
 
-def get_transactionrule_formset(transactionruleset_id=None):
+def get_transactionrule_formset(request=None, transactionruleset_id=None):
     transactionrules = []
     TransactionRuleFormSet = new_transaction_rule_form_set(extra=1)
     transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
@@ -169,6 +170,8 @@ def get_transactionrule_formset(transactionruleset_id=None):
         TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)        
         transactionrules = TransactionRule.objects.filter(transactionruleset_id=transactionruleset_id)
         transactionrule_formset = TransactionRuleFormSet(queryset=transactionrules)
+    elif request and request.method == "POST":
+        transactionrule_formset = TransactionRuleFormSet(request.POST)
     return transactionrule_formset 
 
 def recordmatcher(request, tenant_id, transactionruleset_id=None):
@@ -318,12 +321,6 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
 
 def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule=None):
 
-    transactionruleset_form = TransactionRuleSetForm(request.POST)
-    if transactionruleset_id:
-        transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)
-
-    transactionruleset, transactionrule_formset = get_transactionrule_components(request=request, transactionruleset_id=transactionruleset_id)
-
     response = {
         'success': False,
         'form_errors': [],
@@ -334,98 +331,114 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
             # 'unaccounted_record_ids': ""                
         }
     }
-    
-    if request.method == "DELETE":
 
-        try:
-            transactionruleset.delete()
-            response['success'] = True 
-        except:
-            message = sys.exc_info()[1]
-            logger.error(sys.exc_info()[0])
-            logger.error(message)
-            traceback.print_tb(sys.exc_info()[2])
-            response['errors'].append(message)
+    transactionruleset = None 
 
-        # return redirect(f'transactionrulesets_list', tenant_id=tenant_id)
+    try:
 
-    elif request.method == "POST":
-            
-        try:
+        transactionruleset, transactionrule_formset = get_transactionrule_components(
+            request=request, 
+            transactionruleset_id=transactionruleset_id
+        )
 
-            transactionruleset_form.is_valid() 
-            transactionrule_formset.is_valid(preRuleSet=transactionruleset.id is None)
+        transactionruleset_form = TransactionRuleSetForm(request.POST)
+        if transactionruleset_id:
+            transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)
+        
+        if request.method == "DELETE":
 
-            transactionruleset = transactionruleset_form.save()
+            try:
+                transactionruleset.delete()
+                response['success'] = True 
+            except:
+                message = sys.exc_info()[1]
+                logger.error(sys.exc_info()[0])
+                logger.error(message)
+                traceback.print_tb(sys.exc_info()[2])
+                response['errors'].append(message)
 
-            # -- TODO: verify the is_valid() above actually does everything to ensure the save() below never, ever fails
-            # -- TODO: maybe do a match/replace only on the deleted/changed rules instead of deleting everything 
-            for transactionrule in transactionruleset.transactionrules.all():
-                transactionrule.delete()
+            # return redirect(f'transactionrulesets_list', tenant_id=tenant_id)
 
-            for form in transactionrule_formset:
-                trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
-                trf.is_valid()
-                trf.save()
-            
-            transactionruleset.refresh_from_db()
-            
-            records = transactionruleset.records(refresh=True)
-            records = RecordGrouper.filter_accounted_records(
-                records, 
-                less_than_priority=transactionruleset.priority, 
-                is_auto=False)
-            
-            stats = RecordGrouper.get_stats(records)
-
-            proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
-            if proto_transaction:
-                proto_transaction.update_stats(stats)
-                proto_transaction.save()
-            else:
-                proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
-
-            # transactionrule_formset.save() 
-
-            # -- breaking the formset and re-creating individual TransactionRuleForm was intended to inject the transactionruleset 
-            # -- which was previously not included in the formset fields 
-            # for form in transactionrule_formset:
+        elif request.method == "POST":
                 
-                # logger.warning(f'checking TransactionRuleFormSet form data: {form.cleaned_data}')                    
-                # if form.is_valid():
-                #     trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
-                #     if 'id' in form.cleaned_data and form.cleaned_data["id"]:
-                #         logger.warning(f'creating form for existing transactionrule {form.cleaned_data["id"]}')
-                #         trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset }, instance=TransactionRule.objects.get(pk=form.cleaned_data['id']))
-                #     else:
-                #         logger.warning(f'id not in TransactionRuleFormSet form cleaned data or is null, saving TransactionRuleForm with transactionruleset {transactionruleset}')                        
-                #     trf.is_valid()
-                #     trf.save()
-            
-            # return redirect("transactionrulesets_list", tenant_id=tenant_id)
+            try:
 
-            response['success'] = True 
+                transactionruleset_form.is_valid() 
+                transactionrule_formset.is_valid(preRuleSet=transactionruleset.id is None)
 
-        except ValidationError as ve:
-            error_type = sys.exc_info()[0]
-            logger.error(error_type)
-            message = str(sys.exc_info()[1])
-            logger.error(message)
-            response['form_errors'].append(f'{error_type.__name__}\n{message}')
-            traceback.print_tb(sys.exc_info()[2])
-        except:
-            error_type = sys.exc_info()[0]
-            logger.error(error_type)
-            message = str(sys.exc_info()[1])
-            logger.error(message)
-            response['match_errors'].append(f'{error_type.__name__}\n{message}')
-            traceback.print_tb(sys.exc_info()[2])
+                transactionruleset = transactionruleset_form.save()
 
-        # for form in formset:
-        #     logger.warning(f'creating TransactionRule from {form.cleaned_data}')
-        #     transaction_rule = TransactionRule(**form.cleaned_data)
-        #     transaction_rule.transactionruleset = transactionruleset 
-        #     transaction_rule.save()
+                # -- TODO: verify the is_valid() above actually does everything to ensure the save() below never, ever fails
+                # -- TODO: maybe do a match/replace only on the deleted/changed rules instead of deleting everything 
+                for transactionrule in transactionruleset.transactionrules.all():
+                    transactionrule.delete()
+
+                for form in transactionrule_formset:
+                    trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
+                    trf.is_valid()
+                    trf.save()
+                
+                transactionruleset.refresh_from_db()
+                
+                records = transactionruleset.records(refresh=True)
+                records = RecordGrouper.filter_accounted_records(
+                    records, 
+                    less_than_priority=transactionruleset.priority, 
+                    is_auto=False)
+                
+                stats = RecordGrouper.get_stats(records)
+
+                proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
+                if proto_transaction:
+                    proto_transaction.update_stats(stats)
+                    proto_transaction.save()
+                else:
+                    proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
+
+                # transactionrule_formset.save() 
+
+                # -- breaking the formset and re-creating individual TransactionRuleForm was intended to inject the transactionruleset 
+                # -- which was previously not included in the formset fields 
+                # for form in transactionrule_formset:
+                    
+                    # logger.warning(f'checking TransactionRuleFormSet form data: {form.cleaned_data}')                    
+                    # if form.is_valid():
+                    #     trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
+                    #     if 'id' in form.cleaned_data and form.cleaned_data["id"]:
+                    #         logger.warning(f'creating form for existing transactionrule {form.cleaned_data["id"]}')
+                    #         trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset }, instance=TransactionRule.objects.get(pk=form.cleaned_data['id']))
+                    #     else:
+                    #         logger.warning(f'id not in TransactionRuleFormSet form cleaned data or is null, saving TransactionRuleForm with transactionruleset {transactionruleset}')                        
+                    #     trf.is_valid()
+                    #     trf.save()
+                
+                # return redirect("transactionrulesets_list", tenant_id=tenant_id)
+
+                response['success'] = True 
+
+            except ValidationError as ve:
+                error_type = sys.exc_info()[0]
+                logger.error(error_type)
+                message = str(sys.exc_info()[1])
+                logger.error(message)
+                response['form_errors'].append(f'{error_type.__name__}\n{message}')
+                traceback.print_tb(sys.exc_info()[2])
+            except:
+                error_type = sys.exc_info()[0]
+                logger.error(error_type)
+                message = str(sys.exc_info()[1])
+                logger.error(message)
+                response['match_errors'].append(f'{error_type.__name__}\n{message}')
+                traceback.print_tb(sys.exc_info()[2])
+
+            # for form in formset:
+            #     logger.warning(f'creating TransactionRule from {form.cleaned_data}')
+            #     transaction_rule = TransactionRule(**form.cleaned_data)
+            #     transaction_rule.transactionruleset = transactionruleset 
+            #     transaction_rule.save()
+    except:
+        message = f'{sys.exc_info[0].__name__}: {sys.exc_info()[1]}: failed creating initial tx ruleset form and rule formset'
+        response['errors'].append(message)
 
     return JsonResponse(response)
 
@@ -571,14 +584,17 @@ def update_record_type(request, tenant_id, record_id):
         assoc_record = None 
         assoc_record_meta = None 
 
+        record_type = request.POST['record_type']
+
+        # -- always grab the associated record from the form
+        # -- though it's only used when setting type as internal 
         if 'assoc_id' in request.POST:
             assoc_id = request.POST['assoc_id']
             if assoc_id:
                 assoc_record = Record.objects.get(pk=request.POST['assoc_id'])
                 assoc_record_meta = RecordMeta.objects.filter(extra_fields_hash=assoc_record.extra_fields_hash).first()
-
-        record_type = request.POST['record_type']
-
+        
+        # -- fail early if the associated record isn't available when setting internal 
         if record_type == RecordMeta.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
             response['message'] = f'Both records could not be found'
         else:
@@ -587,7 +603,7 @@ def update_record_type(request, tenant_id, record_id):
                 record_meta.record_type = record_type
                 record_meta.save()
 
-            if assoc_record_meta:         
+            if assoc_record_meta and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
                 assoc_record_meta.record_type = record_type 
                 assoc_record_meta.save()
 
@@ -739,19 +755,49 @@ def files(request, tenant_id):
 
 def sorter(request, tenant_id):
 
+    form = SorterForm()
+    formset = get_transactionrule_formset()
+
+    if request.method == "POST":
+        try:
+            trs = None 
+            if 'ruleset' in request.POST and request.POST['ruleset']:
+                trs = TransactionRuleSet.objects.get(pk=request.POST['ruleset'])
+
+            form = SorterForm(request.POST)
+            form.is_valid()
+            
+            formset = get_transactionrule_formset(request=request)
+            formset.is_valid(preRuleSet=True)
+
+            if not trs:
+                trs_name = " ".join([ f.cleaned_data['match_value'] for f in formset ])
+                trs = TransactionRuleSet.objects.create(name=trs_name)
+
+            for form in formset:
+                logger.debug(form)
+                # trs.transaction_rule_set.apppend(f.instance)
+
+            trs.save()
+
+            return redirect('sorter', tenant_id=tenant_id)
+        except:
+            message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
+            logger.error(message)
+            traceback.print_tb(sys.exc_info()[2])
+            
     records = RecordGrouper.filter_accounted_records(
         Record.objects
             .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
             .order_by('amount'), 
         is_auto=False
     )
-    
-    form = SorterForm()
 
     context = {
         'records': records, 
+        'tokens': tokenize_records(records),
         'form': form,
-        'transactionrule_formset': get_transactionrule_formset()
+        'transactionrule_formset': formset
     }
 
     return render(request, "sorter.html", context)

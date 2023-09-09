@@ -99,8 +99,10 @@ class TransactionRuleSetChoiceField(ModelChoiceField):
 
 class SorterForm(Form):    
     ruleset = TransactionRuleSetChoiceField(
-        queryset=TransactionRuleSet.objects.filter(is_auto=False).order_by('priority'), 
-        label="Rule Set"
+        queryset=TransactionRuleSet.objects.filter(is_auto=False).order_by('priority'),
+        empty_label="- new rule set -",
+        label="Rule Set",
+        required=False
     )
 
 class SettingForm(ModelForm):
@@ -279,40 +281,28 @@ class TransactionForm(ModelForm):
             # else:
             #     logger.warning(f'Amount sign {amount_sign} appears to be appropriate for transaction type {transaction_type}')
 
-# class TransactionIntakeForm(TransactionForm):
+# -- unused afaict
+class TransactionIntakeForm(TransactionForm):
     
-#     class Meta:
-#         model = Transaction
-#         fields = ['id', 'name', 'amount', 'account', 'transaction_type']
+    class Meta:
+        model = Transaction
+        fields = ['id', 'name', 'amount', 'account', 'transaction_type']
 
-#     # frequency = ChoiceField(choices=RecurringTransaction.period_choices)
-#     # transaction_type = ChoiceField(choices=Transaction.type_choices)
+    # frequency = ChoiceField(choices=RecurringTransaction.period_choices)
+    # transaction_type = ChoiceField(choices=Transaction.type_choices)
 
-#     stats = {}
-#     record_group_id = CharField(widget=HiddenInput())
-#     is_imported = CharField(widget=HiddenInput())
+    stats = {}
+    record_group_id = CharField(widget=HiddenInput())
+    is_imported = CharField(widget=HiddenInput())
     
-#     def save(self):
-#         transaction_type = self['transaction_type'].value()
-#         logger.warning(f'Loading typed form for {transaction_type}')
-#         logger.warning(dir(self))        
-#         logger.warning(self.cleaned_data)
-#         logger.warning(self.data)
-#         logger.warning(self.fields)
-#         logger.warning(self.initial)
-#         logger.warning(self.instance)
-#         typed_form = form_types[transaction_type]({ **self.cleaned_data, 'period': utildates.PERIOD_MONTHLY})
-#         if typed_form.is_valid():
-#             logger.warning(f'Form is valid!')
-#             # super(TransactionIntakeForm, self).save()
-#             typed_form.save()
-#         else:
-#             logger.warning(f'Form is NOT valid')
-#             logger.warning(dir(typed_form))
-#             logger.warning(f'typed form errors: {len(typed_form.errors)}')
-#             logger.warning(typed_form.errors)
-#             logger.warning(f'typed form non-field errors:')
-#             logger.warning(typed_form.non_field_errors())
+    def save(self):
+        transaction_type = self['transaction_type'].value()
+        typed_form = form_types[transaction_type]({ **self.cleaned_data, 'period': utildates.PERIOD_MONTHLY})
+        if typed_form.is_valid():
+            # super(TransactionIntakeForm, self).save()
+            typed_form.save()
+        else:
+            logger.warning(f'Form is NOT valid')
 
 class SingleTransactionForm(TransactionForm):
 

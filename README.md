@@ -44,7 +44,7 @@ Transactions and Credit Card Expenses, if you haven't noticed by now, are built 
 
 Once a group of Records is made, the hard part is over. The system can analyze the Records in a group gather enough information to build a Transaction or Credit Card Expense. You can of course review the work and make any corrections. The source of truth is the set of records themselves. The only other persistent data in the system are the rules you create, groups you manually define with individual records, and the Transactions and Credit Card Expenses you manually create or modify. Everything else is filled in automatically and the entire workflow will adapt as you add new records to the history. This means the more coverage you can achieve with Rules to group records and the less manual intervention you need to take, the more responsive the system will be.
 
-Whether records are grouped, typed, annotated, and analyzed automatically or manually, there is a finite set of classifications they  ultimately fall into:
+Whether records are grouped, typed, annotated, and analyzed automatically or manually, there is a finite set of classifications they ultimately fall into:
 
 * recurring or otherwise steady stream we can rely on for a weekly, monthly or yearly sum
 * associated with a one-time event
@@ -63,6 +63,26 @@ All of the meaningful code in this project is ingrained directly in the web fram
 As to features, the original goal of this project was to provide the best path through debt paydown given income and other regular or predictable expenses. Specifically, to know that X extra dollars can be put toward a mortgage principle on day Y without going in the red later on, and to know that the balance will bottom out on day Z, giving the ability to control these parameters a little.
 
 In the course of developing the app to its current state, more elaborate features have come into focus. Say you want to buy a house in the next five years. Given your finances, when will you be able to afford how much of a down payment, and how will your savings grow or shrink with a new mortgage payment, insurance, and property taxes? Mostly this boils down to building projections and tracking the differences made by small changes today.
+
+### Notes on transaction rule forms, records, and data input
+
+How do we want to create rules?
+
+- see as concisely as possible all of the unaccounted records
+- ability to choose an existing rule set or create a new one 
+- if using an existing rule set, have the rule formset fully populated and record matching results immediately visible
+- if creating a new rule set, prepopulate with sane defaults any fields 
+- use a chosen record as the basis for a rule to add to the rule set 
+- while the new or existing rule set is being edited, be able to convert multiple records to rules 
+ 
+
+#### filter page
+
+The filter page is intended to filter out records we don't want to worry about when doing actual budget work.. primarily money moving between accounts, or internal transfers. It can be used to "type" records in any way, refund, fee, etc. but mostly tagging as internal. 
+
+#### sorter page
+
+The sorter page is a response to the earlier "rules" page, which allows the creation of rule sets with the record matcher results (matched records, aggregate table, heatmaps). 
 
 ## Bootstrapping
 

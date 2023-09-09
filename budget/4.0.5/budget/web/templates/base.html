@@ -44,7 +44,58 @@
 
 <script type="text/javascript" src="{% static "js/budget.js" %}"></script>
 
-{% block script %}{% endblock %}
+<script language="javascript">
+
+    function handleRecordTypeSelect(e) {
+        
+        e.preventDefault();
+        
+        record_id = e.target.dataset.recordid;
+
+        var form = document.querySelector("form#form-recordtype-" + record_id);
+        var data = new FormData(form);
+
+        var options = {
+            method: "POST",
+            body: data
+        }
+
+        var base_url = "{% url "update_record_type" tenant_id="000" record_id="111" %}";
+
+        url = base_url.replace(/000/, 1).replace(/111/, record_id);
+
+        fetch(url, options)
+            .then((response) => {
+                var responsej = response.json();
+                return responsej;
+            })
+            .then((response) => {
+                addErrorMessage(response.message)
+                if (!response.success) {
+                    e.target.value = response.data.original_record_type;
+                }
+            })
+            .catch((error) => {
+                addErrorMessage(error);
+                console.error(error);
+            });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+		console.log('dom loaded')
+        document.querySelectorAll("select[name='record_type']").forEach(( e, i ) => {
+			console.log(e);
+            e.addEventListener('change', handleRecordTypeSelect);  
+        });
+    });
+
+</script>
+
+{% block script %}
+
+
+
+{% endblock %}
 
 </body>
 

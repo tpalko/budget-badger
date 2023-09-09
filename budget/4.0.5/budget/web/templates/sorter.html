@@ -6,9 +6,13 @@
 <h2>Sorter</h2>
 
 <div>
+    {{ tokens }}
+</div>
+
+<div>
     <div id="form_errors"></div>
 
-    <form id="ruleform">
+    <form id="ruleform" method="POST">
         {% csrf_token %}
 
         {{ form.as_p }}        

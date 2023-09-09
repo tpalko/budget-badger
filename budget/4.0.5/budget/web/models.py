@@ -163,6 +163,10 @@ def records_from_rules(rule_logics, join_operator):
 
         qs = qs.order_by('-transaction_date')
     
+    else:
+
+        raise Exception(f'No join operator was provided to records_from_rules')
+    
     qs = qs.exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
 
     return list(qs)
@@ -176,7 +180,7 @@ class TransactionRuleSet(BaseModel):
     join_operator_choices = choiceify([JOIN_OPERATOR_AND, JOIN_OPERATOR_OR])
 
     name = models.CharField(max_length=255, null=False)
-    join_operator = models.CharField(max_length=3, choices=join_operator_choices, null=False)
+    join_operator = models.CharField(max_length=3, choices=join_operator_choices, null=False, default=JOIN_OPERATOR_OR)
     is_auto = models.BooleanField(null=False, default=False)
     priority = models.IntegerField(null=False, default=0)
     _records = None 
