@@ -378,8 +378,10 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
                     trf.is_valid()
                     trf.save()
                 
-                transactionruleset.refresh_from_db()
+                # -- create or update the prototransaction
                 
+                transactionruleset.refresh_from_db()
+
                 records = transactionruleset.records(refresh=True)
                 records = RecordGrouper.filter_accounted_records(
                     records, 
@@ -753,19 +755,48 @@ def files(request, tenant_id):
 
     return render(request, "files.html", template_data)
 
+def select_tag(request, tenant_id):
+
+    response = {
+        'success': False,
+        'data': {},
+        'message': ""
+    }
+
+    if request.method == "POST":
+
+        try:
+            tag_value = request.POST['tag_value']
+            response['message'] = f'received {tag_value} tag'
+            response['data']['tag_value'] = tag_value 
+            response['success'] = True 
+        except:
+            response['message'] = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
+            logger.error(response['message'])
+    
+    return JsonResponse(response)
+
 def sorter(request, tenant_id):
 
+    transactionruleset_form = TransactionRuleSetForm(request.POST)
+        
     form = SorterForm()
     formset = get_transactionrule_formset()
 
     if request.method == "POST":
         try:
+
+            transactionruleset_form = TransactionRuleSetForm(request.POST)
+
             trs = None 
             if 'ruleset' in request.POST and request.POST['ruleset']:
                 trs = TransactionRuleSet.objects.get(pk=request.POST['ruleset'])
-
-            form = SorterForm(request.POST)
-            form.is_valid()
+            
+            if trs:
+                transactionruleset_form = TransactionRuleSetForm(request.POST, instance=trs)
+    
+            # form = SorterForm(request.POST)
+            # form.is_valid()
             
             formset = get_transactionrule_formset(request=request)
             formset.is_valid(preRuleSet=True)

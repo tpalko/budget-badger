@@ -82,10 +82,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-		console.log('dom loaded')
-        document.querySelectorAll("select[name='record_type']").forEach(( e, i ) => {
-			console.log(e);
-            e.addEventListener('change', handleRecordTypeSelect);  
+		document.querySelectorAll("select[name='record_type']").forEach(( e, i ) => {
+			e.addEventListener('change', handleRecordTypeSelect);  
         });
     });
 

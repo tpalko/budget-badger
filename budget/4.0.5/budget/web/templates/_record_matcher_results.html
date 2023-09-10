@@ -17,8 +17,12 @@
 
     var controller;
     var form;
+    // var modified_forms = [];
 
     function recordMatcherSubmit(e) {
+
+        // var event_index = e.target.id.match(/id_form-([0-9]+)/)[1];
+        // modified_forms.push(event_index);
 
         e.preventDefault();
 
@@ -40,8 +44,6 @@
             var url = "{% url "recordmatcher" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}";
         {% endif %}
 
-        console.debug('going to submit to ' + url);
-        
         var ruleset_submission = fetch(url, options)
             .then((response) => {
                 controller = undefined;
@@ -90,19 +92,37 @@
         });
     }
 
+    function handleRuleFormModified(e) {
+
+        if (!e.target.classList.contains('modified')) {
+            e.target.classList.add('modified');
+        }
+        
+        recordMatcherSubmit(e);
+    }
+
+    function setRuleFormListeners(formDiv) {
+
+        formDiv.querySelector(".minusform").addEventListener('click', minusForm);
+
+        formDiv.querySelectorAll("select").forEach((el, i) => {
+            el.addEventListener('blur', handleRuleFormModified);
+            el.addEventListener('change', handleRuleFormModified);
+        })
+
+        formDiv.querySelectorAll("input").forEach((el, i) => {
+            el.addEventListener('keyup', handleRuleFormModified);
+            el.addEventListener('blur', handleRuleFormModified);
+        })
+    }
+
     document.addEventListener('DOMContentLoaded', (e) => {
 
         form = document.querySelector("#ruleform");
 
-        form.querySelectorAll("select").forEach((el, i) => {
-            el.addEventListener('blur', recordMatcherSubmit);
-            el.addEventListener('change', recordMatcherSubmit);
-        })
-
-        form.querySelectorAll("input").forEach((el, i) => {
-            el.addEventListener('keyup', recordMatcherSubmit);
-            el.addEventListener('blur', recordMatcherSubmit);
-        })
+        form.querySelectorAll(".formdiv").forEach((el, formDivIndex) => {
+            setRuleFormListeners(el);
+        });
 
         {% if transactionruleset_form.id.value %}
         recordMatcherSubmit(e);

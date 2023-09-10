@@ -216,6 +216,10 @@ td[class*="heat-"] span.heatmap_region {
 	font-size: x-small;
 }
 
+button.tag_button.selected {
+	background-color: #ff9900;
+}
+
 .heat-4 {
 	background-color: #ffffcc;
 }

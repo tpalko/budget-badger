@@ -24,31 +24,31 @@
 
     function renumberFormDivs() {
 
-    var formDivs = document.querySelectorAll(".formdiv");    
-    form['form-TOTAL_FORMS'].value = formDivs.length;
+        var formDivs = document.querySelectorAll(".formdiv");    
+        form['form-TOTAL_FORMS'].value = formDivs.length;
 
-    formDivs.forEach((el, formDivIndex) => {
+        formDivs.forEach((el, formDivIndex) => {
 
-        var beforeCounter = el.dataset.counter;
+            var beforeCounter = el.dataset.counter;
 
-        el.dataset.counter = formDivIndex;
+            el.dataset.counter = formDivIndex;
 
-        el.querySelectorAll("label").forEach((el, i) => {
-            el.setAttribute('for', el.getAttribute('for').replace('form-' + beforeCounter, 'form-' + formDivIndex));
-        })
-        el.querySelectorAll("select").forEach((el, i) => {
-            el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-            el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-        })
-        el.querySelectorAll("input").forEach((el, i) => {
-            el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-            el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
-        })
-        el.querySelector("span.formdivcounter").innerText = formDivIndex + 1;
-        el.querySelector(".minusform").dataset.formdiv = formDivIndex;
+            el.querySelectorAll("label").forEach((el, i) => {
+                el.setAttribute('for', el.getAttribute('for').replace('form-' + beforeCounter, 'form-' + formDivIndex));
+            })
+            el.querySelectorAll("select").forEach((el, i) => {
+                el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+                el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+            })
+            el.querySelectorAll("input").forEach((el, i) => {
+                el.name = el.name.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+                el.id = el.id.replace('form-' + beforeCounter, 'form-' + formDivIndex);
+            })
+            el.querySelector("span.formdivcounter").innerText = formDivIndex + 1;
+            el.querySelector(".minusform").dataset.formdiv = formDivIndex;
 
-        el.id = "formdiv-" + (formDivIndex);
-    });
+            el.id = "formdiv-" + (formDivIndex);
+        });
     }
 
     function minusForm(e) {
@@ -56,7 +56,38 @@
         var index = e.target.dataset.formdiv;
         form.querySelector("#formdiv-" + index).remove();
         renumberFormDivs();
-        formSubmit(e);
+        recordMatcherSubmit(e);
+    }
+
+    function addPopulatedRuleForm(inclusion, field, operator, match_value, event) {
+        // TODO: find the bottommost unmodified form, if exists populate that, otherwise add new 
+
+        var formdivs = form.querySelectorAll(".formdiv");
+        var index = form['form-TOTAL_FORMS'].value - 1;
+
+        var found_unmodified = false;
+        for (i=0; i<formdivs.length; i++) {
+            var is_modified = formdivs[i].classList.contains('modified');
+            var data_entered = formdivs[i].querySelector("[id$='-match_value']").value != "";
+
+            if (!is_modified && !data_entered) {
+                index = i;
+                found_unmodified = true;
+                break;
+            }   
+        }
+
+        if (!found_unmodified) {
+            document.querySelector("#another_form").click();
+            index = form['form-TOTAL_FORMS'].value - 1;
+        }
+        
+        document.querySelector("#id_form-" + index + "-inclusion").value = inclusion;
+        document.querySelector("#id_form-" + index + "-record_field").value = field;
+        document.querySelector("#id_form-" + index + "-match_operator").value = operator;
+        document.querySelector("#id_form-" + index + "-match_value").value = match_value;
+
+        recordMatcherSubmit(event);
     }
 
     function addForm(e) {
@@ -69,10 +100,10 @@
             if (!el.name.match(/form-[0-9]+-transactionruleset/)) {
                 el.value = "";
             }                
-            el.addEventListener("keyup", recordMatcherSubmit);
         })
 
-        cloned.querySelector(".minusform").addEventListener('click', minusForm);
+        setRuleFormListeners(cloned);
+
         // var minusLink = document.createElement("a");
         // minusLink.innerText = "-";
         // minusLink.href = "#";

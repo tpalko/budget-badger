@@ -5,9 +5,15 @@
 
 <h2>Sorter</h2>
 
-<div>
-    {{ tokens }}
-</div>
+<form id="tag_form">
+    {% csrf_token %}
+    <input type="hidden" name="tag_value" value="" />
+    <div>
+        {% for token in tokens %}
+        <button value="{{ token }}" class="tag_button">{{ token }}</button>
+        {% endfor %}
+    </div>
+</form>
 
 <div>
     <div id="form_errors"></div>
@@ -48,4 +54,40 @@
     {% endfor %}
 </table>
 
+{% endblock %}
+
+{% block script %}
+<script language="javascript">
+    var tag_form;
+    document.addEventListener("DOMContentLoaded", (e) => {
+        tag_form = document.querySelector("#tag_form");
+        var hidden = tag_form.querySelector("input[name='tag_value']");
+        document.querySelectorAll("button.tag_button").forEach((e, i) => {
+            e.addEventListener("click", (bce) => {
+                bce.preventDefault();
+                bce.target.classList.add('selected')
+                hidden.value = bce.target.value;
+                var options = {
+                    method: "POST",
+                    body: new FormData(tag_form)
+                }
+                console.log(options);
+                fetch("{% url "select_tag" tenant_id=1 %}", options)
+                    .then((response) => {
+                        return response.json();
+                    })
+                    .then((responsej) => {
+                        console.log(responsej);
+                        if (responsej.success) {
+                            addPopulatedRuleForm('filter', 'description', 'contains', responsej.data.tag_value, bce)
+                        }
+                    })
+                    .catch((error) => {
+                        console.error(error);
+                    })
+                    
+            })
+        })
+    })
+</script>
 {% endblock %}
