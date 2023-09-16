@@ -3,63 +3,102 @@
 
 {% block content %}
 
-<h2>Sorter</h2>
-
-<form id="tag_form">
-    {% csrf_token %}
-    <input type="hidden" name="tag_value" value="" />
-    <div>
-        {% for token in tokens %}
-        <button value="{{ token }}" class="tag_button">{{ token }}</button>
-        {% endfor %}
+<div class="row">
+    <div class="col-10">
+        <div class="row">
+            <div class="col-5">
+                <h2>Sorter</h2>
+                <h4>Unaccounted Records</h4>
+                <div>
+                    ${{ stats.abs_total|format_currency }}
+                </div>
+                <div>
+                    {{ stats.count }} records  
+                </div>
+            </div>
+            <div class="col-11">
+                <div>            
+                    <div id="form_errors"></div>
+            
+                    <form id="ruleform" method="POST">
+                        {% csrf_token %}
+            
+                        <div id="sorter_form">
+                            {{ sorter_form.as_p }}
+                        </div>
+                        
+                        <div id="ruleset_form">
+                            {% include "_transactionruleset_form.html" %}
+                        </div>
+            
+                        <div id="rule_formset">
+                            {% include "_transactionrule_formset.html" %}
+                        </div>
+                        
+                        <div>
+                            <input type="submit" />
+                        </div>
+                    </form>
+            
+                    
+                </div>
+            </div>
+        </div>
+        {% include "_record_matcher_results.html" %}        
     </div>
-</form>
-
-<div>
-    <div id="form_errors"></div>
-
-    <form id="ruleform" method="POST">
-        {% csrf_token %}
-
-        {{ form.as_p }}        
-        <div>
-            {% include "_transactionrule_formset.html" %}
-        </div>
-        <div>
-            <input type="submit" />
-        </div>
-    </form>
+    <div class="col-5">
+        <form id="tag_form">
+            {% csrf_token %}
+            <input type="hidden" name="tag_value" value="" />
+            <div class="token_tags">
+                {% for token in tokens %}
+                <button class="tag_button" title="{{ token|lookup:"total" }}" value="{{ token|lookup:"description" }}" style="font-size: {{ token|lookup:"log_norm_amt" }}em;">{{ token|lookup:"description" }}</button>
+                {% endfor %}
+            </div>
+        </form>
+    </div>
 </div>
-
-<table class="clicky-table">
-    {% for record in records %}
-        <tr title="{{ record.extra_fields }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %} {% if record_rules|lookup:record.id %}accounted{% else %}{% endif %}">
-            <td>
-                {{ record.transaction_date }}
-            </td>
-            <td>
-                {{ record.uploaded_file.account_name }}
-            </td>
-            <td>
-                {{ record.description }}
-            </td>
-            <td>
-                {{ record.amount }}
-            </td>
-            <td>
-                {% include "_record_type_select.html" %}
-            </td>
-
-        </tr>
-    {% endfor %}
-</table>
 
 {% endblock %}
 
 {% block script %}
 <script language="javascript">
+    
     var tag_form;
+    
     document.addEventListener("DOMContentLoaded", (e) => {
+
+        document.querySelector("#sorter_form").querySelectorAll("select").forEach((e, i) => {
+            e.addEventListener("change", (e) => {
+                var base_url = "{% url "get_transaction_rule_forms" tenant_id=1 transactionruleset_id=0 %}";
+                var transactionruleset_id = e.target.value;
+                console.log('base url for ruleset form fetch is ' + base_url);
+                console.log('fetching ruleset form with id ' + transactionruleset_id);
+                url = base_url.replace(/0/, transactionruleset_id);
+
+                fetch(url, { method: "GET", headers: { "X-CSRFToken": getCookie('csrftoken') } })
+                    .then((response) => response.json() )
+                    .then((response) => {
+                        if (response.success) {
+                            document.querySelector("#ruleset_form").innerHTML = response.data.transactionruleset_form;
+                            document.querySelector("#rule_formset").innerHTML = response.data.transactionrule_formset;
+                            document.querySelectorAll("#rule_formset .formdiv").forEach((e, i) => {
+                                if (!e.classList.contains('modified')) {
+                                    e.classList.add('modified');
+                                }
+                            })
+                            setupTransactionRuleFormsetEvents();
+                            setupRecordMatcherResultsEvents();
+                            recordMatcherSubmit();
+                        } else {
+                            addErrorMessage(response.message);
+                        }                        
+                    })
+                    .catch((error) => {
+                        addErrorMessage(error);
+                    })
+            })
+        })
         tag_form = document.querySelector("#tag_form");
         var hidden = tag_form.querySelector("input[name='tag_value']");
         document.querySelectorAll("button.tag_button").forEach((e, i) => {

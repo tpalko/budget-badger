@@ -1,0 +1,20 @@
+{% load budget_tags %}
+
+<div>
+
+    <div class="error">
+        {{ transactionruleset_form.errors }}
+    </div>
+
+    <div class="transactionruleset_form">
+        {% for bound_field in transactionruleset_form %} 
+            <div>
+            {% if not bound_field.is_hidden %} 
+                {{ bound_field.label_tag }}
+            {% endif %}
+            {{ bound_field|tabindex:forloop.counter0 }}
+            </div>
+        {% endfor %}        
+    </div>
+
+</div>

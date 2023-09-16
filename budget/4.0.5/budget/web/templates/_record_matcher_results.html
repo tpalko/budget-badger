@@ -1,13 +1,35 @@
-<div id="edit_stats" style="display: none">
+<div id="record_matcher_results" style="display: none">
     <div id="match_errors"></div>
     <div class="row">
-        <div class="col-9">
+        <div class="col-16">
             Ruleset: <span id="ruleset_evaluated"></span>
+        </div>        
+    </div>
+    <div class="row">
+        <div id="positive-records" class="col-8">        
+            <div>
+                <h4>Bulk Assignment <span class="bulk_record_count"></span></h4>
+                {% include "_record_meta_form.html" %}
+            </div>                
             <div id="recordstats"></div>            
             <div id="aggregate"></div>
             <div id="ruleresults"></div>
         </div>
-        <div class="col-5 col-offset-1">
+        <div id="negative-records" class="col-8">
+            <div>
+                <h4>bulk assignment <span class="bulk_record_count"></span></h4>
+                {% include "_record_meta_form.html" %}
+            </div>
+            <div id="recordstats"></div>            
+            <div id="aggregate"></div>
+            <div id="ruleresults"></div>
+        </div>
+    </div>
+    <div class="row">
+        <div id="positive-heatmaps" class="col-8">
+            <div id="heatmaps"></div>
+        </div>
+        <div id="negative-heatmaps" class="col-8">
             <div id="heatmaps"></div>
         </div>
     </div>    
@@ -17,14 +39,11 @@
 
     var controller;
     var form;
+    var positive_record_ids;
+    var negative_record_ids;
     // var modified_forms = [];
 
-    function recordMatcherSubmit(e) {
-
-        // var event_index = e.target.id.match(/id_form-([0-9]+)/)[1];
-        // modified_forms.push(event_index);
-
-        e.preventDefault();
+    function recordMatcherSubmit() {
 
         if (controller != undefined) {
             controller.abort();            
@@ -38,13 +57,7 @@
             signal: controller.signal
         }
 
-        var url = "{% url "recordmatcher" tenant_id=1 %}";
-
-        {% if transactionruleset_form.id.value %}
-            var url = "{% url "recordmatcher" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}";
-        {% endif %}
-
-        var ruleset_submission = fetch(url, options)
+        var ruleset_submission = fetch("{% url "recordmatcher" tenant_id=1 %}", options)
             .then((response) => {
                 controller = undefined;
                 return response.json();
@@ -53,6 +66,16 @@
             .catch((error) => {
                 console.error(error);
             });
+    }
+
+    function transactionRuleFieldHandler(e) {
+
+        // var event_index = e.target.id.match(/id_form-([0-9]+)/)[1];
+        // modified_forms.push(event_index);
+
+        e.preventDefault();
+
+        recordMatcherSubmit();
 
         return false;
     }
@@ -75,16 +98,43 @@
             }
         }
 
-        document.querySelector("#ruleresults").replaceChildren();
-        
-        document.querySelector("#edit_stats").style.display = "block";
-        document.querySelector("#match_errors").innerHTML = matchErrors;
-        document.querySelector("#recordstats").innerHTML = data.data.recordstats;
-        document.querySelector("#aggregate").innerHTML = data.data.aggregate;
-        document.querySelector("#heatmaps").innerHTML = data.data.heatmaps;
-        document.querySelector("#ruleresults").innerHTML = data.data.ruleresults;            
+        document.querySelector("#record_matcher_results").style.display = "block";
         document.querySelector("#ruleset_evaluated").innerHTML = data.data.ruleset_evaluated;
+        document.querySelector("#match_errors").innerHTML = matchErrors;
 
+        var positive_records = document.querySelector("#positive-records");
+        var positive_heatmaps = document.querySelector("#positive-heatmaps");
+        var negative_records = document.querySelector("#negative-records");
+        var negative_heatmaps = document.querySelector("#negative-heatmaps");
+
+        positive_records.querySelector("#ruleresults").replaceChildren();        
+        positive_records.querySelector("#recordstats").innerHTML = data.data.positive.recordstats;
+        positive_records.querySelector("#aggregate").innerHTML = data.data.positive.aggregate;        
+        positive_records.querySelector("#ruleresults").innerHTML = data.data.positive.ruleresults;            
+        positive_heatmaps.querySelector("#heatmaps").innerHTML = data.data.positive.heatmaps;
+
+        negative_records.querySelector("#ruleresults").replaceChildren();        
+        negative_records.querySelector("#recordstats").innerHTML = data.data.negative.recordstats;
+        negative_records.querySelector("#aggregate").innerHTML = data.data.negative.aggregate;        
+        negative_records.querySelector("#ruleresults").innerHTML = data.data.negative.ruleresults;            
+        negative_heatmaps.querySelector("#heatmaps").innerHTML = data.data.negative.heatmaps;
+        
+        if (data.data.positive.record_ids !== undefined) {
+            positive_records.querySelector("form input[name='record_ids']").value = data.data.positive.record_ids;
+            positive_records.querySelector(".bulk_record_count").innerHTML = "(" + data.data.positive.record_ids.split(',').length + " records)";
+        } else {
+            addErrorMessage("The server returned 'undefined' for credit record IDs")
+        }
+        
+        if (data.data.negative.record_ids !== undefined) {
+            negative_records.querySelector("form input[name='record_ids']").value = data.data.negative.record_ids;
+            negative_records.querySelector(".bulk_record_count").innerHTML = "(" + data.data.negative.record_ids.split(',').length + " records)";
+        } else {
+            addErrorMessage("The server returned 'undefined' for debit record IDs")
+        }
+
+        setRecordTypeSelectListener();
+        
         document.querySelectorAll("[class^='heat-']").forEach((el, i) => {
             el.addEventListener('click', (e) => {
                 console.log('this feature is not available yet.. maybe someday it will filter the list of records shown by the region you just clicked on.. ')
@@ -98,12 +148,16 @@
             e.target.classList.add('modified');
         }
         
-        recordMatcherSubmit(e);
+        transactionRuleFieldHandler(e);
     }
 
     function setRuleFormListeners(formDiv) {
 
-        formDiv.querySelector(".minusform").addEventListener('click', minusForm);
+        var minusform = formDiv.querySelector(".minusform");
+
+        if (minusform !== null) {
+            minusform.addEventListener('click', minusForm);
+        }
 
         formDiv.querySelectorAll("select").forEach((el, i) => {
             el.addEventListener('blur', handleRuleFormModified);
@@ -113,10 +167,11 @@
         formDiv.querySelectorAll("input").forEach((el, i) => {
             el.addEventListener('keyup', handleRuleFormModified);
             el.addEventListener('blur', handleRuleFormModified);
+            el.addEventListener('change', handleRuleFormModified);
         })
     }
 
-    document.addEventListener('DOMContentLoaded', (e) => {
+    function setupRecordMatcherResultsEvents() {
 
         form = document.querySelector("#ruleform");
 
@@ -124,9 +179,17 @@
             setRuleFormListeners(el);
         });
 
+        setRuleFormListeners(document.querySelector("#ruleset_form"));
+    }
+
+    function recordMatcherResultsDomContentLoaded(e) {
+        setupRecordMatcherResultsEvents();
+
         {% if transactionruleset_form.id.value %}
-        recordMatcherSubmit(e);
+        transactionRuleFieldHandler(e);
         {% endif %}
-    });
+    }
+
+    document.addEventListener('DOMContentLoaded', recordMatcherResultsDomContentLoaded);
 
 </script>

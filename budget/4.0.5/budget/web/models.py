@@ -1,6 +1,6 @@
 from django.db.models import Q, F
 from django.db import models
-from django.db.models import OuterRef
+from django.db.models import OuterRef, F
 from django.utils.translation import gettext_lazy as _
 from autoslug import AutoSlugField
 from django.core.exceptions import ValidationError
@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta, date
 import calendar
 import hashlib
-import json 
+import simplejson as json 
 import web.util.dates as utildates
 from web.util.modelutil import choiceify, TransactionTypes
 from web.util.ruleindex import wipe_rule_index_cache
@@ -64,19 +64,25 @@ class Account(BaseModel):
         brackets = []
         start = None 
         end = None 
+        margin = timedelta(days=5)
 
         for uploadedfile in self.uploadedfiles.all().order_by('first_date'):
             handled = False 
             for bracket in brackets:
-                if uploadedfile.first_date > bracket[0] and uploadedfile.first_date < bracket[1] and uploadedfile.last_date > bracket[1]:
-                    # -- extends this bracket
-                    bracket[1] = uploadedfile.last_date
-                    handled = True 
-                    break 
+                # -- this file starts within this bracket and ends past it (extends the bracket)
+                if uploadedfile.first_date > bracket[0] and uploadedfile.last_date > bracket[1]:
+
+                    if uploadedfile.first_date - margin < bracket[1]:
+                        # -- extends this bracket
+                        bracket[1] = uploadedfile.last_date
+                        handled = True 
+                        break 
+                    
                 if uploadedfile.first_date > bracket[0] and uploadedfile.last_date < bracket[1]:
                     # -- contained by this bracket, do nothing
                     handled = True 
-                    break                 
+                    break                                 
+                
             if not handled:
                 brackets.append([uploadedfile.first_date, uploadedfile.last_date])
             
@@ -141,33 +147,44 @@ class Vehicle(BaseModel):
     model = models.CharField(max_length=255, null=True)
     year = models.IntegerField(null=True)
 
+# def records_from_accounted_priority(priority):
+    
+#     return Record.budgeting.filter(meta_accounted_at=priority)
+
 def records_from_rules(rule_logics, join_operator):
     
-    # logger.warning(f'matching records on {json.dumps(rule_logics, indent=4)}')
-    qs = None 
+    '''
+    See RecordGrouper.filter_accounted_records for some insight on this
+    '''
 
-    if join_operator == TransactionRuleSet.JOIN_OPERATOR_AND:
+    qset = None 
+    this_qs = []
 
-        qs = Record.objects.all()
-        for logic in rule_logics:
-            # logger.debug(f'applying filter {filter}')
-            qs = logic.apply(qs)
-        
-        qs = qs.order_by('-transaction_date')
-        
-    elif join_operator == TransactionRuleSet.JOIN_OPERATOR_OR:
-        
-        qs = Record.objects.none()
-        for logic in rule_logics:
-            qs = qs | logic.apply(Record.objects.all())            
+    for logic in rule_logics:
 
-        qs = qs.order_by('-transaction_date')
-    
-    else:
+        if logic.tr.record_field == "full_description":
+            new_logics = [ 
+                TransactionRuleLogic(TransactionRule(record_field='description', inclusion=logic.tr.inclusion, match_operator=logic.tr.match_operator, match_value=logic.tr.match_value)),
+                TransactionRuleLogic(TransactionRule(record_field='meta_description', inclusion=logic.tr.inclusion, match_operator=logic.tr.match_operator, match_value=logic.tr.match_value))
+            ]
+            for l in new_logics:
+                this_qs.append(l.key_arg_dict())
+        else:
+            this_qs.append(logic.key_arg_dict())
 
-        raise Exception(f'No join operator was provided to records_from_rules')
-    
-    qs = qs.exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
+    logger.debug(f'Q dicts: {this_qs}')
+
+    for i, qdict in enumerate(this_qs):
+        q = Q(**qdict)
+        if i == 0:
+            qset = q
+        else:
+            if join_operator == TransactionRuleSet.JOIN_OPERATOR_AND:
+                qset = qset & q 
+            elif join_operator == TransactionRuleSet.JOIN_OPERATOR_OR:
+                qset = qset | q 
+
+    qs = Record.budgeting.filter(qset).order_by('-transaction_date')
 
     return list(qs)
 
@@ -189,13 +206,21 @@ class TransactionRuleSet(BaseModel):
     def records(self, refresh=False):
 
         if not self._records or refresh:
+            logger.debug(f'Refetching records for transactionruleset {self.id}')
+            
+            ## sorter page: 23s cold, 14s subsequent
             filters = [ TransactionRuleLogic(tr) for tr in self.transactionrules.all() ]
             self._records = records_from_rules(filters, self.join_operator)
-        
+
+            ## sorter page: 13s cold, 9s subsequent
+            # self._records = records_from_accounted_priority(self.priority)
+        else:
+            logger.debug(f'Using cached records for transactionruleset {self.id}')
+
         return self._records 
 
     def __str__(self):
-        return self.name
+        return self.name      
 
     def prototransaction_safe(self):
         try:
@@ -208,21 +233,40 @@ class TransactionRuleSet(BaseModel):
 
         wipe_rule_index_cache()
 
-        trs = TransactionRuleSet.objects.all().order_by('priority')
-        curr = None 
-        for rs in trs:
-            if not curr:
-                curr = rs.priority 
-                continue 
-            if curr == rs.priority:
-                rs.priority += 1
-                curr = rs.priority 
-                rs.save()
-            else:
-                curr = rs.priority
+        # logger.debug(f'Wiping accounted priority from records in ruleset {self.id}')
+        # for record in self.records():
+        #     record_meta = RecordMeta.objects.filter(core_fields_hash=record.core_fields_hash).first()
+        #     record_meta.accounted_at = None
+        #     record_meta.save()
+
+        # trs = TransactionRuleSet.objects.filter(priority__gte=self.priority, is_auto=False).order_by('-priority')
+        # logger.debug(f'Cycling through {len(trs)} rulesets to reset accounted priority')
+        # for tr in trs:
+        #     for record in tr.records():
+        #         record_meta = RecordMeta.objects.filter(core_fields_hash=record.core_fields_hash).first()
+        #         if record_meta.accounted_at is None or record_meta.accounted_at > tr.priority:
+        #             logger.debug(f'Setting record meta {record_meta.id} (was {record_meta.accounted_at}) accounted at {tr.priority}')
+        #             record_meta.accounted_at = tr.priority 
+        #             record_meta.save()
+        #         else:
+        #             logger.debug(f'Record meta {record_meta.id} is set to {record_meta.accounted_at}, lower than or equal to {tr.priority}')
+
+        # trs = TransactionRuleSet.objects.all().order_by('priority')
+        # curr = None 
+        # for rs in trs:
+        #     if not curr:
+        #         curr = rs.priority 
+        #         continue 
+            
+        #     if curr == rs.priority:
+        #         rs.priority += 1            
+        #         rs.save()
+            
+        #     curr = rs.priority
 
 class TransactionRuleLogic(object):
 
+    tr = None 
     operator_fn = None 
     fn_key = None 
     fn_arg = None 
@@ -230,10 +274,10 @@ class TransactionRuleLogic(object):
     def __init__(self, *args, **kwargs):        
         if len(args) < 1:
             raise Exception("TransactionRuleLogic must be provided with a TransactionRule")
-        tr = args[0]
-        self.operator_fn = tr.inclusion
-        self.fn_key = f'{tr.record_field.lower()}{tr.match_operator_lookup[tr.match_operator]}'
-        self.fn_arg = tr.match_value
+        self.tr = args[0]
+        self.operator_fn = self.tr.inclusion
+        self.fn_key = f'{self.tr.record_field.lower()}{self.tr.match_operator_lookup[self.tr.match_operator]}'
+        self.fn_arg = self.tr.match_value
 
     def key_arg_dict(self):
         return {self.fn_key: self.fn_arg}
@@ -287,8 +331,8 @@ class TransactionRule(BaseModel):
     def __str__(self):
         return f'{self.record_field} {self.match_operator} {self.match_value}'
 
-    def filter(self):
-        return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
+    # def filter(self):
+    #     return { f'{self.record_field.lower()}{self.match_operator_lookup[self.match_operator]}': self.match_value }
 
 class ProtoTransaction(BaseModel):
     '''A transitional object between a rule set -- a logical grouping of records, and a full-on transaction -- a budgetable spending abstraction'''
@@ -553,6 +597,11 @@ class PlannedPayment(models.Model):
 
 class RecordMeta(BaseModel):
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['core_fields_hash'])
+        ]
+
     # -- income, refunds, any amount from an external source to the system 
     RECORD_TYPE_UNKNOWN = 'unknown'
     RECORD_TYPE_REFUND = 'refund'
@@ -573,49 +622,70 @@ class RecordMeta(BaseModel):
     ]
 
     extra_fields_hash = models.CharField(max_length=32, null=True)
+    core_fields_hash = models.CharField(max_length=32, null=True)
     record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)
     property = models.ForeignKey(to=Property, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     vehicle = models.ForeignKey(to=Vehicle, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     event = models.ForeignKey(to=Event, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     target = models.CharField(max_length=50, null=True)
+    description = models.CharField(max_length=255, blank=True, null=False)
     detail = models.TextField(null=False, blank=True)
-    is_accounted = models.BooleanField(null=False, default=False)
-
+    # accounted_at = models.IntegerField(null=True)
 
 class RecordTypeManager(models.Manager):
 
     def get_queryset(self):
-        meta_join = RecordMeta.objects.filter(extra_fields_hash=OuterRef('extra_fields_hash'))
-        annotated = super().get_queryset().annotate(meta_record_type=meta_join.values('record_type'))
+        meta_join = RecordMeta.objects.filter(core_fields_hash=OuterRef('core_fields_hash'))
+        annotated = super().get_queryset() \
+            .annotate(meta_description=meta_join.values('description')) \
+            .annotate(meta_record_type=meta_join.values('record_type'))
+
+        # .annotate(meta_accounted_at=meta_join.values('accounted_at')) \
+
         return annotated # .filter(transaction_date__gte='2022-01-01', transaction_date__lt='2023-01-01')
 
-    def filter_type(self, record_type):        
-        return self.filter(meta_record_type=record_type)
+    # def filter_type(self, record_type):        
+    #     return self.filter(meta_record_type=record_type)
 
-    def exclude_type(self, record_type):
-        return self.exclude(meta_record_type=record_type)
+    # def exclude_type(self, record_type):
+    #     return self.exclude(meta_record_type=record_type)
 
+class BudgetingManager(RecordTypeManager):
+
+    def get_queryset(self):
+        return super().get_queryset() \
+            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) \
+            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
+            # .exclude(Q(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) | Q(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL))
+        
 class Record(BaseModel):
     '''A normalized representation of a single historical transaction'''
 
     objects = RecordTypeManager()
+    budgeting = BudgetingManager()
 
     class Meta:
         indexes = [
             models.Index(fields=['description']),
+            # models.Index(fields=['record_type', 'accounted_at']),
+            models.Index(fields=['extra_fields_hash']),
+            models.Index(fields=['core_fields_hash'])
         ]
 
     # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
     uploaded_file = models.ForeignKey(to=UploadedFile, related_name='records', on_delete=models.RESTRICT)    
     # transaction = models.ForeignKey(to=Transaction, related_name='records', on_delete=models.SET_NULL, null=True)
     # creditcardexpense = models.ForeignKey(to=CreditCardExpense, related_name='records', on_delete=models.SET_NULL, null=True)    
+    # record_type = models.CharField(max_length=15, null=False, choices=choiceify(RecordMeta.RECORD_TYPES), default=RecordMeta.RECORD_TYPE_UNKNOWN)
+    # accounted_at = models.IntegerField(null=True)
     transaction_date = models.DateField()
     post_date = models.DateField(null=True)
-    description = models.CharField(max_length=255, blank=True, null=True)
+    description = models.CharField(max_length=255, blank=True, null=False)
     amount = models.DecimalField(decimal_places=2, max_digits=20)    
     # record_type = models.CharField(max_length=15, null=False, choices=choiceify(RecordMeta.RECORD_TYPES), default=RecordMeta.RECORD_TYPE_UNKNOWN)        
     extra_fields = models.JSONField(null=True)
     extra_fields_hash = models.CharField(max_length=32, null=True)
+    core_fields_hash = models.CharField(max_length=32, null=True)
     
     '''
     select transaction_date, description, amount, count(*) from web_record group by transaction_date, description, amount order by count(*);
@@ -629,18 +699,60 @@ class Record(BaseModel):
     def __str__(self):
         return f'{self.id}, {self.uploaded_file.account or self.uploaded_file.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
 
+    def full_description(self):
+        return self.description if self.meta_description == "" else f'{self.description} - {self.meta_description}'
+
     def save(self, *args, **kwargs):
         
         if self.extra_fields is None:
             self.extra_fields = {}
+        
         self.extra_fields_hash = hashlib.md5(json.dumps(self.extra_fields, sort_keys=True, ensure_ascii=True).encode('utf-8')).hexdigest()
-        logger.info(f'record saving with hash {self.extra_fields_hash}: {args}')
+        core_fields_dict = {
+            'transaction_date': datetime.strftime(self.transaction_date, "%s"), 
+            'description': self.description, 
+            'amount': self.amount, 
+            **self.extra_fields
+        }
+    
+        self.core_fields_hash = hashlib.md5(            
+            json.dumps(core_fields_dict, sort_keys=True, ensure_ascii=True, use_decimal=True).encode('utf-8')
+        ).hexdigest()
+        
+        core_meta = RecordMeta.objects.filter(core_fields_hash=self.core_fields_hash).first()        
+        # meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
 
-        meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
-        if not meta:
-            logger.info(f'meta record missing, creating now from record')
-            new_meta = RecordMeta.objects.create(extra_fields_hash=self.extra_fields_hash)
-            logger.info(f'meta record {new_meta.id} created')
+        meta_copy = {}
+        # if meta:            
+        #     meta_copy = { 
+        #         d: meta.__dict__[d] 
+        #         for d in meta.__dict__.keys() 
+        #             if d in [ 
+        #                 f.name 
+        #                 for f in RecordMeta._meta.fields 
+        #             ] and d not in [
+        #                 'id', 
+        #                 'created_at', 
+        #                 'updated_at', 
+        #                 'deleted_at', 
+        #                 'extra_fields_hash' 
+        #             ] 
+        #     }
+
+        meta_copy.update({'core_fields_hash': self.core_fields_hash})
+
+        if not core_meta:
+            logger.debug(f'record core fields: {core_fields_dict}')
+            core_meta = RecordMeta.objects.create(**meta_copy)
+            logger.info(f'missing core meta record {core_meta.id} created')
+
+        # if self.record_type == RecordMeta.RECORD_TYPE_UNKNOWN:
+        #     self.record_type = core_meta.record_type 
+        
+        # if self.accounted_at is None:
+        #     self.accounted_at = core_meta.accounted_at
+
+        logger.info(f'record saving with extra_fields_hash {self.extra_fields_hash}, core_fields_hash {self.core_fields_hash}: {args}')
 
         super(Record, self).save(*args, **kwargs)
 
@@ -656,10 +768,10 @@ class Record(BaseModel):
         
 
 
-MANAGER_METHOD_LOOKUP = {
-    TransactionRule.INCLUSION_FILTER: Record.objects.filter,
-    TransactionRule.INCLUSION_EXCLUDE: Record.objects.exclude,
-}
+# MANAGER_METHOD_LOOKUP = {
+#     TransactionRule.INCLUSION_FILTER: Record.objects.filter,
+#     TransactionRule.INCLUSION_EXCLUDE: Record.objects.exclude,
+# }
 
 class Settings(BaseModel):
 

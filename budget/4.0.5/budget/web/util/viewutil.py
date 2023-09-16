@@ -5,17 +5,55 @@ from web.util.stats import nearest_whole
 from web.util.recordgrouper import RecordGrouper
 from web.util.modelutil import TransactionTypes
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from web.util.csvparse import get_records_from_csv
-from web.models import UploadedFile, Record, Transaction, RecordFormat
-from web.forms import RecordForm
+from web.models import UploadedFile, Record, Transaction, RecordFormat, TransactionRuleSet, TransactionRule, ProtoTransaction
+from web.forms import RecordForm, TransactionRuleForm, TransactionRuleSetForm, new_transaction_rule_form_set
 
 from datetime import datetime, timedelta
 import logging 
 import sys 
 import traceback 
+from enum import Enum
 
 
 logger = logging.getLogger(__name__)
+
+class Searches(Enum):
+    SEARCH_CC_ACCT_CREDITS = 'cc_acct_credits'
+    SEARCH_TX_CC_PAYMENTS = 'tx_cc_payments'
+    SEARCH_ALL_CREDITS = 'all_credits'
+    SEARCH_ALL_DEBITS = 'all_debits'
+
+SEARCH_OPTIONS = [
+    ("credit card and account credits", Searches.SEARCH_CC_ACCT_CREDITS.value,),
+    ("transfers and credit card payments", Searches.SEARCH_TX_CC_PAYMENTS.value,),
+    ("all credits", Searches.SEARCH_ALL_CREDITS.value,),
+    ("all debits", Searches.SEARCH_ALL_DEBITS.value,)
+]
+
+SEARCH_QUERIES = {
+    Searches.SEARCH_CC_ACCT_CREDITS.value: Q(
+                Q(uploaded_file__creditcard__isnull=False) \
+                    | Q(
+                        Q(uploaded_file__account__isnull=False) \
+                            & (
+                                Q(description__iregex=r"Interest Payment") | \
+                                    Q(description__iregex=r"Internet transfer from") | \
+                                    Q(description__iregex=r"FROM|TO.+CHECKING|SAVINGS")
+                            )
+                    )
+            )
+            & Q(amount__gt=0),
+    Searches.SEARCH_TX_CC_PAYMENTS.value: Q(
+        Q(description__iregex=r"Interest Payment") \
+            | Q(description__iregex=r"Internet transfer from") \
+            | Q(description__iregex=r"FROM|TO.+CHECKING|SAVINGS") \
+            | Q(description__iregex=r"thank\s?you")
+    ) & Q(amount__lt=0),
+    Searches.SEARCH_ALL_CREDITS.value: Q(amount__gt=0),
+    Searches.SEARCH_ALL_DEBITS.value: Q(amount__lt=0)
+}
 
 def transaction_type_display(transaction_type):
     return [ choice_tuple[1] for choice_tuple in TransactionTypes.transaction_type_choices if choice_tuple[0] == transaction_type ][0]
@@ -125,10 +163,104 @@ def get_heatmap_data(filtered_records):
 #         'record_group_columns': record_group_columns
 #     }
 
+def init_transaction_rule_forms(request, transactionruleset_id=None):
+
+    # load ID
+    transactionruleset = None 
+    if transactionruleset_id:                
+        transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
+   
+    # form defaults 
+    transactionruleset_form = TransactionRuleSetForm()        
+    TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)
+    transactionrule_formset = None 
+
+    # form init
+    if transactionruleset:
+        # -- load form and formset for edit 
+        transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)            
+        transactionrule_formset = TransactionRuleFormSet(queryset=transactionruleset.transactionrules.all())
+    else:
+        # -- load formset for create
+        TransactionRuleFormSet = new_transaction_rule_form_set(extra=1)
+        transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
+
+    if request.method == "POST":
+        
+        # form init + populate 
+        if transactionruleset:
+            # -- handle posted edits 
+            transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)            
+            transactionrule_formset = TransactionRuleFormSet(request.POST, queryset=transactionruleset.transactionrules.all())
+        else:
+            # -- handle posted create
+            transactionruleset_form = TransactionRuleSetForm(request.POST)            
+            transactionrule_formset = TransactionRuleFormSet(request.POST)
+    
+    return transactionruleset, transactionruleset_form, transactionrule_formset 
+
+def process_transaction_rule_forms(ruleset_form, rule_formset):
+
+    # model refresh/persist from forms 
+
+    transactionruleset = ruleset_form.save()
+
+    # -- TODO: verify the is_valid() above actually does everything to ensure the save() below never, ever fails
+    # -- TODO: maybe do a match/replace only on the deleted/changed rules instead of deleting everything 
+    for transactionrule in transactionruleset.transactionrules.all():
+        transactionrule.delete()
+
+    for form in rule_formset:
+        trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
+        trf.is_valid()
+        trf.save()
+    
+    transactionruleset = ruleset_form.save()
+    
+    return transactionruleset
+
+def handle_transaction_rule_form_request(request, transactionruleset_id=None):
+
+    transactionruleset, transactionruleset_form, transactionrule_formset = init_transaction_rule_forms(request, transactionruleset_id)
+
+    if request.method == "POST":
+
+        transactionruleset_form.is_valid() 
+        transactionrule_formset.is_valid(preRuleSet=transactionruleset is None)
+
+        transactionruleset = process_transaction_rule_forms(transactionruleset_form, transactionrule_formset)
+        
+        transactionruleset.refresh_from_db()
+
+        prototransaction = refresh_prototransaction(transactionruleset)        
+
+        return True, transactionruleset_form, transactionrule_formset
+
+    return False, transactionruleset_form, transactionrule_formset
+
+def refresh_prototransaction(transactionruleset):
+    records = transactionruleset.records(refresh=True)
+    
+    records = RecordGrouper.filter_accounted_records(
+        records, 
+        less_than_priority=transactionruleset.priority, 
+        is_auto=False)
+    
+    stats = RecordGrouper.get_stats(records)
+
+    proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
+    if proto_transaction:
+        proto_transaction.update_stats(stats)
+        proto_transaction.save()
+    else:
+        proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
+    
+    return proto_transaction
+        
 def ruleset_stats(rulesets):
     
     total_amount = sum([ transactionruleset.prototransaction_safe().stats['monthly_amount'] for transactionruleset in rulesets if transactionruleset.prototransaction_safe() ])
-    total_records = sum([ len(transactionruleset.records()) for transactionruleset in rulesets ])
+    total_records = sum([ len(transactionruleset.records(refresh=True)) for transactionruleset in rulesets ])
 
     return {
         'totals': {
@@ -148,13 +280,13 @@ def get_records_template_data(filtered_records):
 
         desc_stats = [
             {
-                'description': desc,
+                'full_description': desc,
                 'stats': { 
-                    'percentage': 100*sum([ r.amount for r in filtered_records if r.description == desc ])/total, 
-                    'sum': sum([ r.amount for r in filtered_records if r.description == desc ]),
-                    'count': len([ r for r in filtered_records if r.description == desc ])
+                    'percentage': 100*sum([ r.amount for r in filtered_records if r.full_description() == desc ])/total, 
+                    'sum': sum([ r.amount for r in filtered_records if r.full_description() == desc ]),
+                    'count': len([ r for r in filtered_records if r.full_description() == desc ])
                 } 
-            } for desc in set([ o.description for o in filtered_records ])
+            } for desc in set([ o.full_description() for o in filtered_records ])
         ]
         
         date_list = [ r.transaction_date for r in filtered_records ]
@@ -228,7 +360,7 @@ def _process_records(records, csv_date_format, flow_convention):
         'transaction_date': datetime.strptime(record['transaction_date'], csv_date_format) if 'transaction_date' in record else datetime.strptime(record['date'], csv_date_format),
         'post_date': datetime.strptime(record['post_date'] if 'post_date' in record else record['date'] if 'date' in record else record['posting_date'], csv_date_format),
         'amount': _must_amount(record, flow_convention)        
-    } for record in records ]
+    } for record in records if 'status' not in record or record['status'].lower() != "pending" ]
 
     # -- just more conditional post-processing
     for record in records:
@@ -237,6 +369,17 @@ def _process_records(records, csv_date_format, flow_convention):
                 record[float_potential] = _floatify(record[float_potential])
     
     return records 
+
+def process_file(uploadedfile):
+    details = process_uploaded_file(uploadedfile)    
+    logger.info(f'Reprocessing {uploadedfile.original_filename}/{uploadedfile.account_name()} found {len(details["records"])} records')    
+    logger.info(f'Saving {len(details["records"])} records from reprocessing uploaded file {uploadedfile.original_filename}')
+    save_processed_records(details['records'], uploadedfile)
+
+def cleanup_file(uploadedfile):
+    db_records = uploadedfile.records.all()
+    logger.warning(f'Deleting {len(db_records)} from {uploadedfile.account_name()} -- {len(db_records)} currently in database')
+    db_records.delete()
 
 def process_uploaded_file(uploaded_file):
     '''Ingestion of CSV file to database'''
@@ -273,10 +416,11 @@ def process_uploaded_file(uploaded_file):
         # -- do a little preprocessing so we can avoid duplicating uploaded files 
         raw_records = get_records_from_csv(file_contents, this_format.csv_columns.split(','), uploaded_file.header_included)
         records = _process_records(raw_records, this_format.csv_date_format, this_format.flow_convention)
-    except e:      
-        logger.error(f'{sys.exc_info()[0]} {sys.exc_info()[1]}')
+    except:      
+        error_msg = f'{sys.exc_info()[0]} {sys.exc_info()[1]}'
+        logger.error(error_msg)
         traceback.print_tb(sys.exc_info()[2])  
-        raise Exception(f'No records could be processed from this uploaded file: {e}')
+        raise Exception(f'No records could be processed from this uploaded file: {error_msg}')
         # logger.warning(f'failed to process with assigned record type, will try amex basic and combined (god help you if these are not amex transactions)')
         # basic_recordformat = Recordformat.objects.filter(name='amex basic').first()
         # combined_recordformat = Recordformat.objects.filter(name='amex combined').first()
@@ -305,12 +449,28 @@ def save_processed_records(records, uploadedfile):
     for record in records:
 
         try:
+
+            lookup_dict = { 
+                f: record[f] for f in ['transaction_date', 'post_date', 'description', 'amount']
+            }
+
+            # lookup_dict = { 
+            #     f: record[f] 
+            #     for f in record.keys() 
+            #     if f in [ 'transaction_date', 'post_date', 'description', 'amount' ] 
+            # }
+
+            logger.debug(f'looking up record with {lookup_dict}')
+
+            db_records = Record.objects.filter(**lookup_dict)
+
+            if len(db_records) > 0:
+                logger.info(f'saving record, but {len(db_records)} match(es) ({",".join([ str(r.id) for r in db_records ]) }) found for {record}')
+                continue 
+
             record_data = { 
                 **record, 
-                'uploaded_file': uploadedfile,
-                # 'account': uploadedfile.account,
-                # 'creditcard': uploadedfile.creditcard,
-                'description': record['description'] or ''
+                'uploaded_file': uploadedfile
             }
             
             # formatted

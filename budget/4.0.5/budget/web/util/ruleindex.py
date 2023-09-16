@@ -30,13 +30,14 @@ def parse_rule_index_cache_key(key):
     return { 'less_than_priority': priority, 'is_auto': is_auto }
 
 def wipe_rule_index_cache():
+    global _rule_index_cache
     _rule_index_cache = {}
 
-def get_rule_index(tx_rule_sets, lt_priority, is_auto, refresh_cache=False, refresh_records=False):
+def get_rule_index(tx_rule_sets, lt_priority, is_auto, refresh_cache=True, refresh_records=True):
     
     key = get_rule_index_cache_key(lt_priority=lt_priority, is_auto=is_auto)    
     if key not in _rule_index_cache or refresh_cache:        
-        logger.debug(f'record/rule index CACHE MISS or REFRESH')
+        logger.debug(f'record/rule index {key} CACHE MISS or REFRESH')
         _rule_index_cache[key] = get_record_rule_index(
             tx_rule_sets,
             less_than_priority=lt_priority, 
@@ -44,16 +45,16 @@ def get_rule_index(tx_rule_sets, lt_priority, is_auto, refresh_cache=False, refr
             refresh_records=refresh_records
         )
     else:
-        logger.debug(f'record/rule index CACHE HIT')
+        logger.debug(f'record/rule index {key} CACHE HIT')
     return _rule_index_cache[key]
 
-def get_record_rule_index(tx_rule_sets, less_than_priority=None, is_auto=None, refresh_records=False):
+def get_record_rule_index(tx_rule_sets, less_than_priority=None, is_auto=None, refresh_records=True):
     '''Creates an index of all records => # of TransactionRuleSets it appears in. Useful for weeding out records that have rule set
     attachments and for a quick "rules matched" lookup.'''
 
     logger.info(f'Generating record/rule index on rulesets < priority {less_than_priority}, is_auto={is_auto}')
 
-    if less_than_priority:
+    if less_than_priority is not None:
         tx_rule_sets = tx_rule_sets.filter(priority__lt=less_than_priority)
     if is_auto is not None:
         tx_rule_sets = tx_rule_sets.filter(is_auto=is_auto)
@@ -62,7 +63,11 @@ def get_record_rule_index(tx_rule_sets, less_than_priority=None, is_auto=None, r
 
     # -- list of lists of record IDs for each rule set 
     # rule_sets = [ [ r.id for r in trs.records(refresh=refresh) ] for trs in tx_rule_sets ]
-    rule_set_ids = { trs.id: [ r.id for r in trs.records(refresh=refresh_records) ] for trs in prefetched_rule_sets }
+    rule_set_ids = { 
+        trs.id: [ 
+            r.id for r in trs.records(refresh=refresh_records) 
+        ] for trs in prefetched_rule_sets 
+    }
     # -- flatten and deduplicate list of lists 
     record_ids = set([ i for s in rule_set_ids.values() for i in s ])
     # -- mapping of record ID to the count of lists it's a part of

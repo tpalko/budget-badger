@@ -1,0 +1,85 @@
+{% load budget_tags %}
+
+<div class="row">
+
+    <div class="col-16">
+        Amount: ${{ stats|lookup:'totals'|lookup:'amount'|format_currency }}
+        Records: {{ stats|lookup:'totals'|lookup:'records' }}
+    </div>
+    
+    <div class="col-16">
+        <table>
+            <tr>
+                <th></th>
+                <th>Priority</th>
+                <th>Ruleset</th>        
+                <th>Rules</th>
+                <th># Records</th>
+                <th>xAcct</th>
+                <th>Period</th>
+                <th>Type</th>
+                <th>Recurring Amount</th>                
+                <th>$/month</th>
+            </tr>
+        {% for transactionruleset in table %}
+            <tr id="transactionruleset-{{transactionruleset.id }}" title="{% if transactionruleset.prototransaction %}{{ transactionruleset.prototransaction.stats }}{% endif %}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+                <td>
+                    <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}">edit</a>
+                    {% if not transactionruleset.is_auto %}
+                    <a href="{%  url "transactionruleset_delete" tenant_id=1 transactionruleset_id=transactionruleset.id %}" class="delete" data-deletecallback="transactionruleset_deleted_handler">delete</a>
+                    {% endif %}
+                </td>
+                <td>{{ transactionruleset.priority }}</td>
+                <td>{{ transactionruleset.name }}</td>        
+                <td>
+                    {% for transactionrule in transactionruleset.transactionrules.all %}
+                    <div>
+                        #{{ forloop.counter }}. {% if forloop.counter0 > 0 %}{{ transactionruleset.join_operator }} {% endif %}{{ transactionrule.record_field }} {{ transactionrule.match_operator }} {{ transactionrule.match_value}}
+                    </div>
+                    {% endfor %}
+                </td>
+                <td>{{ transactionruleset.records|length }}</td>
+                {% if transactionruleset.prototransaction %}
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.cross_account }}</td>                    
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.period }}</td>                    
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.transaction_type }}</td>                    
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.recurring_amount }}</td>                                        
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.stats.monthly_amount|format_currency }}</td>                    
+                {% else %}
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                    <td>-</td>
+                {% endif %}
+                
+            </tr>
+        {% endfor %}
+        </table>    
+    </div>
+</div>
+
+{% block script %}
+
+<script language="javascript">
+
+    function transactionruleset_deleted_handler(response) {
+
+        if (response.success) {
+            var txrulesetrow = document.querySelector("#transactionruleset-" + response.data.transactionruleset_id);
+
+            if (txrulesetrow === null) {
+                alert('the row for transactionruleset ' + response.data.transactionruleset_id + ' could not be found');
+                return;             
+            }
+
+            txrulesetrow.remove();        
+            
+        } else {
+            alert(response.message);
+        }        
+    }
+
+</script>
+
+{% endblock %}

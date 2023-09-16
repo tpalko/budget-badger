@@ -10,6 +10,7 @@
 
 <table class="clicky-table">
     <tr>
+        <th>#</th>
         <th>Account</th>
         <th>Filename</th>
         <th>Uploaded</th>
@@ -19,12 +20,17 @@
     </tr>
     {% for uploadedfile in uploadedfiles %}
         <tr id="uploadedfile-{{ uploadedfile.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ uploadedfile.id }}</td>
             <td>{% if uploadedfile.account %}{{ uploadedfile.account }}{% else %}{{ uploadedfile.creditcard }}{% endif %}</td>                
             <td>{{ uploadedfile.original_filename }}</td>
             <td>{{ uploadedfile.created_at }}</td>
             <td>{{ uploadedfile.records.all|length }} / {{ uploadedfile.record_count }}</td>
             <td>{{ uploadedfile.first_date }} to {{ uploadedfile.last_date }}</td>
-            <td><a href="{% url "delete_uploadedfile" tenant_id=1 uploadedfile_id=uploadedfile.id %}" data-element-id="uploadedfile-{{ uploadedfile.id }}" class="delete">delete</a></td>
+            <td>
+                <a href="{% url "reprocess_files" tenant_id=1 uploadedfile_id=uploadedfile.id action="process" %}">process</a>
+                <a href="{% url "reprocess_files" tenant_id=1 uploadedfile_id=uploadedfile.id action="cleanup" %}">cleanup</a>
+                <a href="{% url "delete_uploadedfile" tenant_id=1 uploadedfile_id=uploadedfile.id %}" data-element-id="uploadedfile-{{ uploadedfile.id }}" class="delete">delete</a>
+            </td>
         </tr>
     {% endfor %}
 </table>

@@ -1,20 +1,26 @@
 {% load budget_tags %}
 
 <h3>Matched Records {{ records|length }}</h3>
-<div style="max-height: 500px;overflow-y:scroll;">
+<div class="record_matcher_result" style="max-height: 500px;overflow-y:scroll;">
     <table style="width: 100%;">
         <tr>
+            <th>id</th>
             <th>date</th>
             <th>acct/cc</th>
             <th>desc</th>
             <th>amt</th>            
+            <th></th>
         </tr>
         {% for record in records %} 
             <tr title="{{ record.extra_fields }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+                <td>{{ record.id }}</td>
                 <td>{{ record.transaction_date }}</td>
-                <td>{{ record.account }}</td>
-                <td>{{ record.description }}</td>
+                <td>{{ record.uploaded_file.account_name }}</td>
+                <td>{{ record.full_description }}</td>
                 <td>{{ record.amount }}</td>                
+                <td>
+                    {% include "_record_meta_form.html" with selected_record=record %}                    
+                </td>
             </tr>
         {% endfor %}
     </table>    

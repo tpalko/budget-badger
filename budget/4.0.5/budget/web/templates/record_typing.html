@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Record Typing</h2>
+
+<div class="row">
+    <strong>Record typing</strong> provides the ability to annotate records with <em>record types</em>. 
+    All records are <em>unknown</em> type by default. <em>internal</em>-annotated records are excluded 
+    from budgetary and projection-related searches, as these operations are intended to identify actual 
+    outbound expenses and inbound earnings. Record type is independent of <em>accounted</em> status, which 
+    indicates whether a ruleset exists that characterizes a record.
+</div>
+
+<form>
+    <label>search:</label>
+    <select name="search">
+        {% for search_option in search_options %}
+            <option value="{{ search_option.1 }}" {% if search_option.1 == search %}selected{% endif %}>{{ search_option.0 }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+<ul id="tabs-recordtypes" class="tabs">
+    {% for record_type in record_types %} 
+        <li id="record_type-{{ record_type }}">{{ record_type }} ({{ records|lookup:record_type|length }})</li>
+    {% endfor %}
+</ul>
+
+{% for record_type in record_types %} 
+    {% with records=records|lookup:record_type record_type=record_type %}
+    <div id="tabs-recordtypes-record_type-{{ record_type }}">
+        {% include "_record_types_table.html" %}
+    </div>
+    {% endwith %}
+{% endfor %}  
+
+{% endblock %}
+
+{% block script %}
+
+<script language="javascript">
+
+    var base_url = "{% url "record_typing" tenant_id=1 search="xxx" %}";
+
+    document.addEventListener("DOMContentLoaded", (e) => {
+        var form = document.querySelector("form");
+        document.querySelector("form select").addEventListener('change', (e) => {
+            var search = e.target.value;
+            var url = base_url.replace(/xxx/, search);
+            document.location = url;
+        })
+    })
+
+</script>
+
+{% endblock %}

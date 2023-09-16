@@ -7,6 +7,7 @@ from django.http import JsonResponse
 from django.forms import modelformset_factory
 
 import sys
+from enum import Enum 
 from datetime import datetime, timedelta
 import logging
 import traceback
@@ -16,7 +17,7 @@ from web.util.viewutil import get_heatmap_data, get_records_template_data, trans
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
-from web.util.viewutil import alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
+from web.util.viewutil import Searches, SEARCH_QUERIES, SEARCH_OPTIONS, cleanup_file, process_file, refresh_prototransaction, handle_transaction_rule_form_request, process_transaction_rule_forms, init_transaction_rule_forms, alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 from web.util.ruleindex import get_record_rule_index
 from web.util.tokens import tokenize_records
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
@@ -120,27 +121,26 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
 
     try:
         transactionrulesets_manual = TransactionRuleSet.objects.filter(is_auto=False)
+
+        credit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.stats['monthly_amount'] > 0 ]
+        debit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.stats['monthly_amount'] < 0 ]
+        nostat_rulesets = [ rs for rs in transactionrulesets_manual if not rs.prototransaction_safe() ]
+
     except:
         logger.error(sys.exc_info()[0])
         message = str(sys.exc_info()[1])
         logger.error(message)
         traceback.print_tb(sys.exc_info()[2])
 
-    transactionruleset = TransactionRuleSet()    
-    transactionruleset_form = TransactionRuleSetForm()
-    
-    if transactionruleset_id:                
-        transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
-        transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
-
     template_data = {
         'manual_stats': ruleset_stats(transactionrulesets_manual),
         'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: t.priority, reverse=False),
-        'message': message,
-        'transactionruleset_form': transactionruleset_form,
-        # 'recordfields': [ f.name for f in Record._meta.fields ],
-        'transactionrule_formset': get_transactionrule_formset(transactionruleset_id=transactionruleset_id),
-        'join_operators': TransactionRuleSet.join_operator_choices
+        'credit_stats': ruleset_stats(credit_rulesets),
+        'credit_rulesets': sorted(credit_rulesets, key=lambda t: t.priority, reverse=False),
+        'debit_stats': ruleset_stats(debit_rulesets),
+        'debit_rulesets': sorted(debit_rulesets, key=lambda t: t.priority, reverse=False),        
+        'nostat_rulesets': sorted(nostat_rulesets, key=lambda t: t.priority, reverse=False),
+        'message': message        
     }
 
     return render(request, "transactionrulesets_list.html", template_data)
@@ -174,8 +174,7 @@ def get_transactionrule_formset(request=None, transactionruleset_id=None):
         transactionrule_formset = TransactionRuleFormSet(request.POST)
     return transactionrule_formset 
 
-def recordmatcher(request, tenant_id, transactionruleset_id=None):
-
+def recordmatcher(request, tenant_id):
    
     response = {
         'success': False,
@@ -184,122 +183,80 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
         'errors': [],
         'data': {
             'records': [],                 
-            # 'unaccounted_record_ids': ""                
         }
     }
-
-    transactionruleset, transactionrule_formset = get_transactionrule_components(request=request, transactionruleset_id=transactionruleset_id)
 
     if request.method == "POST":
 
         try:
 
-            '''
-            rules, new formset
-
-                name:           retirement
-                join_operator:  and
-                priority:       59
-                id: 
-                
-            rules, edit formset
-
-                name:           EPP copays
-                join_operator:  and
-                priority:       2
-                id:             50153
-            
-            sorter, no rule set 
-            
-                ruleset: 
-            
-            sorter, rule set 
-            
-                ruleset:        41076
-            
-            '''
-
-            default_join_operator = TransactionRuleSet.JOIN_OPERATOR_OR
-            default_priority = 0
+            TransactionRuleFormSet = new_transaction_rule_form_set(extra=0)
 
             transactionruleset_form = TransactionRuleSetForm(request.POST)
             transactionruleset = None     
+            transactionrule_formset = TransactionRuleFormSet(request.POST)
 
-            validate_ruleset_form = False 
-            pre_ruleset = True 
-            join_operator = default_join_operator
-            priority = default_priority
-            
-            if transactionruleset_id is None:                
-                if 'id' in request.POST:
-                    if request.POST['id']:
-                        transactionruleset_id = request.POST['id']
-                        pre_ruleset = False 
-                    validate_ruleset_form = True 
-                elif 'ruleset' in request.POST and request.POST['ruleset']:
-                    transactionruleset_id = request.POST['ruleset']
-            
-            if transactionruleset_id is not None:            
+            join_operator = TransactionRuleSet.JOIN_OPERATOR_OR
+            priority = 0
+
+            transactionruleset_id = None   
+            if 'id' in request.POST and request.POST['id']:
+                transactionruleset_id = request.POST['id']
                 transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
                 transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)
-            
-            if validate_ruleset_form:
-                transactionruleset_form.is_valid()
-                join_operator = transactionruleset_form.cleaned_data['join_operator']
-                priority = transactionruleset_form.cleaned_data['priority']
-            elif transactionruleset:
-                join_operator = transactionruleset.join_operator
-                priority = transactionruleset.priority
+                transactionrule_formset = TransactionRuleFormSet(request.POST, queryset=transactionruleset.transactionrules.all())
 
-            transactionrule_formset.is_valid(preRuleSet=pre_ruleset)
+            transactionruleset_form.is_valid()
+            join_operator = transactionruleset_form.cleaned_data['join_operator']
+            priority = transactionruleset_form.cleaned_data['priority']
+            
+            transactionrule_formset.is_valid(preRuleSet=transactionruleset is None)
             
             logger.warning(f'Getting records from {[ form.cleaned_data for form in transactionrule_formset ]}')
 
             # -- yes, we're recreating the TransactionRuleSet.records method here, we don't have actual objects
             # -- sort of.. just the forms that hold the fields for the objects
             filters = [ TransactionRuleLogic(TransactionRule(**form.cleaned_data)) for form in transactionrule_formset ]
-            # filters = [ f for f in filters if f ]
             record_queryset = records_from_rules(filters, join_operator)
-            pared_record_queryset = RecordGrouper.filter_accounted_records(record_queryset, less_than_priority=priority, is_auto=False)
-
-            # record_queryset = None
-            # for form in transactionrule_formset:                                                  
-            #     record_queryset = records_from_rule(form.cleaned_data['record_field'], form.cleaned_data['match_operator'], form.cleaned_data['match_value'], transactionruleset_form.cleaned_data['join_operator'], record_queryset=record_queryset)
-
-            # if record_queryset:
-                
-            record_data = [ { 
-                'id': r.id, 
-                'transaction_date': r.transaction_date, 
-                'description': r.description, 
-                'amount': r.amount, 
-                'account': r.uploaded_file.account.name if r.uploaded_file.account else r.uploaded_file.creditcard.name,              
-                'extra_fields': r.extra_fields
-            } for r in pared_record_queryset ]
             
-            response['data']['records'] = record_data 
+            response['data']['ruleset_evaluated'] = f' {join_operator} '.join([ str(f.instance) for f in transactionrule_formset.forms ]) + f' at priority {priority}'
 
-            # unaccounted_record_ids = [ str(r['id']) for r in record_data if not r['transaction'] ]
-            # response['data']['unaccounted_record_ids'] = ",".join(unaccounted_record_ids)
-            
-            recordstats = {
-                'total_record_count': len(record_data),
-                'accounted_records_removed': len(record_queryset) - len(pared_record_queryset),
-                # 'unaccounted_record_count': len(unaccounted_record_ids),
-                **get_records_template_data(pared_record_queryset)
+            split_recordsets = {
+                'positive': {
+                    'records': [ r for r in record_queryset if r.amount > 0 ]
+                }, 
+                'negative': {
+                    'records': [ r for r in record_queryset if r.amount < 0 ]
+                }
             }
+            
+            for key in split_recordsets:
 
-            response['data']['recordstats'] = render_to_string("_recordstats.html", context=recordstats)
-            response['data']['aggregate'] = render_to_string("_ruleset_aggregate.html", context=recordstats)
-            response['data']['heatmaps'] = render_to_string("_heatmaps.html", context={ 'heatmap_data': get_heatmap_data(pared_record_queryset) })
-            response['data']['ruleresults'] = render_to_string("_ruleresults.html", context={ 'records': record_data })                    
-            response['data']['ruleset_evaluated'] = "<br />".join([ str(f.instance) for f in transactionrule_formset.forms ])
-            
-            # else:
-            #     message = "No queryset!"
-            #     response['messages'].append(message)
-            #     logger.error(message)
-            
+                response['data'][key] = {}
+                recordset = split_recordsets[key]['records']
+
+                pared_recordset = RecordGrouper.filter_accounted_records(recordset, less_than_priority=priority, is_auto=False)
+
+                pared_record_count = len(pared_recordset)
+
+                shared_context = {
+                    'total_record_count': pared_record_count,
+                    'accounted_records_removed': len(recordset) - pared_record_count,
+                    # 'unaccounted_record_count': len(unaccounted_record_ids),
+                    **get_records_template_data(pared_recordset),
+                    'heatmap_data': get_heatmap_data(pared_recordset),
+                    'records': pared_recordset,
+                    'record_types': RecordMeta.RECORD_TYPES,
+                    'join_operators': TransactionRuleSet.join_operator_choices
+
+                }
+
+                response['data'][key]['recordstats'] = render_to_string("_recordstats.html", context=shared_context)
+                response['data'][key]['aggregate'] = render_to_string("_ruleset_aggregate.html", context=shared_context)
+                response['data'][key]['heatmaps'] = render_to_string("_heatmaps.html", context=shared_context)
+                response['data'][key]['ruleresults'] = render_to_string("_ruleresults.html", context=shared_context)
+                response['data'][key]['record_ids'] = ",".join([ str(r.id) for r in pared_recordset ])
+                
             response['success'] = True 
             
         except ValidationError as ve:
@@ -319,7 +276,109 @@ def recordmatcher(request, tenant_id, transactionruleset_id=None):
     
     return JsonResponse(response)
 
+def sorter(request, tenant_id):
+
+    transactionruleset_id = None 
+    if request.method == "POST":
+        if 'ruleset' in request.POST and request.POST['ruleset']:
+            transactionruleset_id = request.POST['ruleset']
+
+    post_handled, transactionruleset_form, transactionrule_formset = handle_transaction_rule_form_request(request, transactionruleset_id)
+    
+    if post_handled:
+        return redirect("sorter", tenant_id=tenant_id)
+    
+    transactionrulesets = TransactionRuleSet.objects.filter(is_auto=False)
+    records = RecordGrouper.filter_accounted_records(
+        Record.budgeting.order_by('amount'), 
+        is_auto=False
+    )
+    tokens = tokenize_records(records)
+    sorter_form = SorterForm()
+
+    stats = {
+        'abs_total': sum([ abs(r.amount) for r in records ]),
+        'count': len(records)
+    }
+
+    context = {
+        'tokens': tokens,
+        'stats': stats,
+        'sorter_form': sorter_form,
+        'transactionrulesets': transactionrulesets,
+        'transactionruleset_form': transactionruleset_form,        
+        'transactionrule_formset': transactionrule_formset        
+    }
+
+    return render(request, "sorter.html", context) 
+
+def get_transaction_rule_forms(request, tenant_id, transactionruleset_id):
+
+    response = {
+        'success': False,
+        'data': {},
+        'message': ""
+    }
+
+    transactionruleset, transactionruleset_form, transactionrule_formset = init_transaction_rule_forms(request, transactionruleset_id)
+
+    ruleset_form_context = { 
+        'transactionruleset_form': transactionruleset_form        
+    }
+
+    response['data']['transactionruleset_form'] = render_to_string("_transactionruleset_form.html", ruleset_form_context)
+
+    rule_formset_context = { 
+        'transactionrule_formset': transactionrule_formset        
+    }
+
+    response['data']['transactionrule_formset'] = render_to_string("_transactionrule_formset.html", rule_formset_context)
+
+    response['success'] = True 
+
+    return JsonResponse(response)
+
+def transactionruleset_delete(request, tenant_id, transactionruleset_id):
+
+    response = {
+        'success': False,
+        'data': {},
+        'message': ""
+    }
+
+    transactionruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
+    
+    if request.method == "DELETE":
+
+        try:
+            response['data']['transactionruleset_id'] = transactionruleset.id 
+            transactionruleset.delete()
+            response['success'] = True             
+            response['message'] = f'{transactionruleset_id} deleted'
+        
+        except:
+            message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
+            logger.error(message)
+            response['message'] = message 
+            traceback.print_tb(sys.exc_info()[2])
+    
+    return JsonResponse(response)
+
 def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule=None):
+
+    post_handled, transactionruleset_form, transactionrule_formset = handle_transaction_rule_form_request(request, transactionruleset_id)
+    
+    if post_handled:
+        return redirect("transactionrulesets_list", tenant_id=tenant_id)
+
+    context = {
+        'transactionruleset_form': transactionruleset_form,        
+        'transactionrule_formset': transactionrule_formset
+    }
+
+    return render(request, "transactionruleset_edit.html", context)
+
+def transactionruleset_edit_OLD(request, tenant_id, transactionruleset_id=None, rule=None):
 
     response = {
         'success': False,
@@ -444,17 +503,17 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
 
     return JsonResponse(response)
 
-    # if transactionruleset:
-    #     transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
+    if transactionruleset:
+        transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
 
-    # template_data = {
-    #     'transactionruleset_form': transactionruleset_form,
-    #     'recordfields': [ f.name for f in Record._meta.fields ],
-    #     'transactionrule_formset': transactionrule_formset,
-    #     'join_operators': TransactionRuleSet.join_operator_choices
-    # }
+    template_data = {
+        'transactionruleset_form': transactionruleset_form,
+        'recordfields': [ f.name for f in Record._meta.fields ],
+        'transactionrule_formset': transactionrule_formset,
+        'join_operators': TransactionRuleSet.join_operator_choices
+    }
     
-    # return render(request, "transactionruleset_edit.html", template_data)
+    return render(request, "transactionruleset_edit.html", template_data)
 
 def transactionrulesets_auto(request, tenant_id):
 
@@ -488,11 +547,9 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
             uploadedfile.records.all().delete()
             uploadedfile.delete()
             
-            for other in others:                
-                other_details = process_uploaded_file(other)
-                logger.info(f'found {len(other_details["records"])} reprocessing uploaded file {other.original_filename}')
-                save_processed_records(other_details['records'], other)
-
+            for other in others:         
+                process_file(other)
+                
             success = True 
 
     except:
@@ -502,26 +559,24 @@ def delete_uploadedfile(request, tenant_id, uploadedfile_id):
 
     return JsonResponse({'success': success, 'message': message})
 
-def filters(request, tenant_id):
+def record_typing(request, tenant_id, search=None):
 
     records_by_type = {}
+    DEFAULT_SEARCH = Searches.SEARCH_CC_ACCT_CREDITS
+
+    search = DEFAULT_SEARCH.value if not search else search 
+
+    if request.method == "POST":
+        if 'search' in request.POST:
+            search = request.GET['search']
+            return redirect("record_typing", tenant_id=tenant_id, search=search)
 
     for record_type in RecordMeta.RECORD_TYPES:
             
-        records = Record.objects.filter(meta_record_type=record_type).filter(
-            Q(
-                Q(uploaded_file__creditcard__isnull=False) \
-                    | Q(
-                        Q(uploaded_file__account__isnull=False) \
-                            & (
-                                Q(description__regex=r"Interest Payment") | \
-                                    Q(description__regex=r"Internet transfer from") | \
-                                    Q(description__regex=r"FROM|TO.+CHECKING|SAVINGS")
-                            )
-                    )
-            )
-            & Q(amount__gt=0)
-        ).order_by('-transaction_date')
+        records = Record.objects \
+            .filter(meta_record_type=record_type) \
+            .filter(SEARCH_QUERIES[search]) \
+            .order_by('-transaction_date')
 
         # cc_payments = Record.objects.filter(
         #     uploaded_file__creditcard__isnull=False, 
@@ -569,56 +624,144 @@ def filters(request, tenant_id):
         records_by_type[record_type] = template_models
     
     context = {
+        'search': search,
         'records': records_by_type, 
-        'template_models': template_models        
+        'template_models': template_models,
+        'search_options': SEARCH_OPTIONS  
     }
 
-    return render(request, "filters.html", context)
+    return render(request, "record_typing.html", context)
 
-def update_record_type(request, tenant_id, record_id):
+def update_record_meta(request, tenant_id):
 
-    response = {'success': False, 'message': '', 'data': {}}
+    response = {
+        'success': False, 
+        'messages': [], 
+        'data': {}
+    }
+
     try:
-        record = Record.objects.get(pk=record_id)
-        record_meta = RecordMeta.objects.filter(extra_fields_hash=record.extra_fields_hash).first()
-        response['data']['original_record_type'] = record_meta.record_type 
+        record_ids_raw = request.POST['record_ids']
+        record_ids = [ int(id) for id in record_ids_raw.split(',') ]
 
-        assoc_record = None 
-        assoc_record_meta = None 
+        for record_id in record_ids:
+            record = Record.objects.get(pk=record_id)
+            record_meta = RecordMeta.objects.filter(core_fields_hash=record.core_fields_hash).first()
+            
+            response['data']['original_record_type'] = record_meta.record_type 
+            response['data']['original_description'] = record_meta.description 
 
-        record_type = request.POST['record_type']
+            assoc_record = None 
+            assoc_record_meta = None 
 
-        # -- always grab the associated record from the form
-        # -- though it's only used when setting type as internal 
-        if 'assoc_id' in request.POST:
-            assoc_id = request.POST['assoc_id']
-            if assoc_id:
-                assoc_record = Record.objects.get(pk=request.POST['assoc_id'])
-                assoc_record_meta = RecordMeta.objects.filter(extra_fields_hash=assoc_record.extra_fields_hash).first()
+            record_type = request.POST['record_type']
+            description = request.POST['description']
+
+            # -- always grab the associated record from the form
+            # -- though it's only used when setting type as internal 
+            assoc_id_field_name = f'{record.id}-assoc_id'
+
+            if assoc_id_field_name in request.POST:
+                assoc_id = request.POST[assoc_id_field_name]
+                if assoc_id:
+                    assoc_record = Record.objects.get(pk=assoc_id)
+                    assoc_record_meta = RecordMeta.objects.filter(core_fields_hash=assoc_record.core_fields_hash).first()
         
-        # -- fail early if the associated record isn't available when setting internal 
-        if record_type == RecordMeta.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
-            response['message'] = f'Both records could not be found'
-        else:
-
+            if record_type == RecordMeta.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
+                response['messages'].append(f'Both records could not be found')
+            
             if record_meta:   
                 record_meta.record_type = record_type
+                record_meta.description = description 
                 record_meta.save()
 
             if assoc_record_meta and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
                 assoc_record_meta.record_type = record_type 
                 assoc_record_meta.save()
 
-                response['message'] = f'Records {record.id} and {assoc_record.id} meta ({record_meta.id}, {assoc_record_meta.id}) updated to {record_type}'
+                response['messages'].append(f'Records {record.id} and {assoc_record.id} (meta {record_meta.id}, {assoc_record_meta.id}) type updated to {record_type}, {record.id} updated description to {description}')
             else:
-                response['message'] = f'Record {record.id} meta ({record_meta.id}) updated to {record_type}'
+                response['messages'].append(f'Record {record.id} meta ({record_meta.id}) updated to {record_type} / {description}')
             
-            response['success'] = True 
+        response['success'] = True 
                 
     except:
-        response['message'] = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
+        response['messages'].append(f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}')
 
     return JsonResponse(response)
+
+def _base_fields(obj, fields):
+    return { f: getattr(obj, f) for f in fields }
+
+def tracing(request, tenant_id, trace_by):
+
+    trace_by = 'recordmeta' if not trace_by else trace_by
+
+    '''
+    orphaned core recordmetas
+    select m.core_fields_hash from web_recordmeta m left join web_record r on r.core_fields_hash = m.core_fields_hash where m.core_fields_hash is not null and r.id is null;
+    orphaned extra recordmetas
+    select m.extra_fields_hash from web_recordmeta m left join web_record r on r.extra_fields_hash = m.extra_fields_hash where m.extra_fields_hash is not null and r.id is null;
+    select m.extra_fields_hash, m.core_fields_hash from web_recordmeta m left join web_record r on (r.extra_fields_hash = m.extra_fields_hash and m.extra_fields_hash is not null) or (r.core_fields_hash = m.core_fields_hash and m.core_fields_hash is not null) where r.id is null;
+    '''
+    meta_records = []
+
+    record_base_fields = ['id', 'description', 'transaction_date', 'amount', 'meta_record_type', 'meta_description', 'core_fields_hash'] #, 'extra_fields_hash']
+    meta_base_fields = ['id', 'description', 'record_type', 'core_fields_hash'] #, 'extra_fields_hash']
+
+    if trace_by == 'recordmeta':
+        
+        header = meta_base_fields
+        metas = RecordMeta.objects.filter(core_fields_hash__isnull=False)
+
+        for meta in metas:
+            template_dict = {
+                **_base_fields(meta, header),
+                'core_match_records': [ 
+                    _base_fields(r, record_base_fields) for r in Record.objects.filter(core_fields_hash=meta.core_fields_hash) 
+                ],
+                # 'extra_match_records': [ 
+                #     _base_fields(r, record_base_fields) for r in Record.objects.filter(extra_fields_hash=meta.extra_fields_hash) 
+                # ]
+            }
+
+            if len(template_dict['core_match_records']) > 1: # or len(template_dict['extra_match_records']) > 1:
+                meta_records.append(template_dict)
+
+    elif trace_by == 'records':
+
+        header = record_base_fields
+        records = Record.objects.all()
+
+        for record in records:
+
+            lookup_dict = { 
+                f: getattr(record, f) for f in ['transaction_date', 'post_date', 'description', 'amount']
+            }
+
+            template_dict = {
+                **_base_fields(record, header),
+                'field_match_records': [
+                    _base_fields(r, record_base_fields) for r in Record.objects.filter(~Q(id=record.id), **lookup_dict)
+                ],
+                # 'core_match_records': [ 
+                #     _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(core_fields_hash=meta.core_fields_hash) 
+                # ],
+                # 'extra_match_records': [ 
+                #     _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(extra_fields_hash=meta.extra_fields_hash) 
+                # ]
+            }
+            if len(template_dict['field_match_records']) > 0: # or len(template_dict['extra_match_records']) > 1:
+                meta_records.append(template_dict)
+    
+    context = {
+        'meta_records': meta_records, 
+        'header': header, 
+        'match_header': record_base_fields, 
+        'trace_by': trace_by
+    }
+    
+    return render(request, "tracing.html", context)
 
 def records(request, tenant_id):
     
@@ -776,74 +919,21 @@ def select_tag(request, tenant_id):
     
     return JsonResponse(response)
 
-def sorter(request, tenant_id):
+def reprocess_files(request, tenant_id, action, uploadedfile_id=None):
 
-    transactionruleset_form = TransactionRuleSetForm(request.POST)
-        
-    form = SorterForm()
-    formset = get_transactionrule_formset()
+    files = []
+    if not uploadedfile_id:
+        files = UploadedFile.objects.all()
+    else:
+        files = [UploadedFile.objects.get(pk=uploadedfile_id)]
 
-    if request.method == "POST":
-        try:
-
-            transactionruleset_form = TransactionRuleSetForm(request.POST)
-
-            trs = None 
-            if 'ruleset' in request.POST and request.POST['ruleset']:
-                trs = TransactionRuleSet.objects.get(pk=request.POST['ruleset'])
-            
-            if trs:
-                transactionruleset_form = TransactionRuleSetForm(request.POST, instance=trs)
-    
-            # form = SorterForm(request.POST)
-            # form.is_valid()
-            
-            formset = get_transactionrule_formset(request=request)
-            formset.is_valid(preRuleSet=True)
-
-            if not trs:
-                trs_name = " ".join([ f.cleaned_data['match_value'] for f in formset ])
-                trs = TransactionRuleSet.objects.create(name=trs_name)
-
-            for form in formset:
-                logger.debug(form)
-                # trs.transaction_rule_set.apppend(f.instance)
-
-            trs.save()
-
-            return redirect('sorter', tenant_id=tenant_id)
-        except:
-            message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}'
-            logger.error(message)
-            traceback.print_tb(sys.exc_info()[2])
-            
-    records = RecordGrouper.filter_accounted_records(
-        Record.objects
-            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
-            .order_by('amount'), 
-        is_auto=False
-    )
-
-    context = {
-        'records': records, 
-        'tokens': tokenize_records(records),
-        'form': form,
-        'transactionrule_formset': formset
+    file_action_map = {
+        'process': process_file,
+        'cleanup': cleanup_file
     }
 
-    return render(request, "sorter.html", context)
-
-def reprocess_files(request, tenant_id):
-
-    files = UploadedFile.objects.all()
     for f in files:        
-        details = process_uploaded_file(f)
-        db_records = f.records.all()
-        logger.info(f'Reprocessing {f.original_filename}/{f.account_name()} found {len(details["records"])} records, {len(db_records)} currently in database')
-        logger.warning(f'Deleting {len(db_records)} from {f.account_name()}')
-        db_records.delete()
-        logger.info(f'Saving {len(details["records"])} records from reprocessing uploaded file {f.original_filename}')
-        save_processed_records(details['records'], f)
+        file_action_map[action](f)
     
     return redirect("files", tenant_id=tenant_id)
 

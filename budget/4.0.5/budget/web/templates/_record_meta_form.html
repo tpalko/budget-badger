@@ -1,0 +1,10 @@
+<form class="record_meta" method="POST" action="{% url "update_record_meta" tenant_id=1 %}">
+    <input type="hidden" name="record_ids" value="{{ selected_record.id }}" />
+    <input type="text" name="description" value="{{ selected_record.meta_description }}" />
+    <select name="record_type">                    
+        {% for k in record_types %}
+            <option value="{{ k }}" {% if k == selected_record.meta_record_type %}selected{% endif %}>{{ k }}</option>
+        {% endfor %}
+    </select>
+    <input type="submit" />
+</form>

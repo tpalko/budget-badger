@@ -1,8 +1,0 @@
-<form id="form-recordtype-{{ record.id }}">
-    {% csrf_token %}
-    <select data-recordid="{{ record.id }}" name="record_type">                    
-        {% for k in record_types %}
-            <option value="{{ k }}" {% if k == record.meta_record_type %}selected{% endif %}>{{ k }}</option>
-        {% endfor %}
-    </select>
-</form>

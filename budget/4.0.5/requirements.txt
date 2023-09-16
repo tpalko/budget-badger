@@ -4,3 +4,4 @@ django-autoslug
 mysqlclient
 redis
 numpy
+simplejson

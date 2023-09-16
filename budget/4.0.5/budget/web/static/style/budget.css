@@ -68,6 +68,10 @@ body.dark #tabs > div.selected {
 	color: #333333;
 }
 
+.record_matcher_result {
+	background-color: #99ff99;
+}
+
 .hidden {
 	display: none;
 }
@@ -137,14 +141,63 @@ table#record_group_table {
 table tr th{
 }
 
-table tr.even {
+table tr:nth-child(even) {
     background-color: #66cc66;
     color: #000;
 }
 
-table tr.odd {
+table tr:nth-child(odd) {
     background-color: #99ff99;
     color: #000;
+}
+
+table tr td table tr:nth-child(even) {
+    background-color: #993333;
+    color: #fff;
+	font-weight: bold;
+}
+
+table tr td table tr:nth-child(odd) {
+    background-color: #663333;
+    color: #fff;
+	font-weight: bold;
+}
+
+#record_matcher_results {
+	font-size: 0.8em;
+}
+
+form.record_meta,
+form#ruleform {
+	font-size: 0.7em;
+}
+
+form.record_meta input[type='text'] {
+	width: 120px;
+}
+
+div.transactionruleset_form {
+	display: inline-flex; 
+	flex-wrap: wrap; 
+	margin-bottom: 5px;
+}
+
+div.transactionruleset_form div {
+	margin-right: 5px;
+}
+
+div.transactionruleset_form input[name='priority'] {
+	width: 50px;
+}
+
+tr.even td.prototransaction-field {
+	background-color: #6666cc;
+	color: white;
+}
+
+tr.odd td.prototransaction-field {
+	background-color: #9999ff;
+	color: white;
 }
 
 div.accounting-table table tr{
@@ -214,6 +267,20 @@ td[class*="heat-"] span.heatmap_region {
 	margin-top: -10px;
 	float: right;
 	font-size: x-small;
+}
+
+div.token_tags {
+	display: inline-flex; 
+	flex-wrap: wrap; 
+	justify-content: space-between;
+	background-color: #eeffee;
+	border: 1px solid #006600;
+	padding: 10px;
+}
+
+button.tag_button {
+	background-color: #ffff99;
+	margin: 2px 0px;
 }
 
 button.tag_button.selected {

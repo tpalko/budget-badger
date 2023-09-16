@@ -41,11 +41,26 @@ function handleDeleteClick(e) {
 		}
 	}
 	fetch(e.target.href, options)
-		.then((response) => {
-			console.log(response);
-			document.location = document.location;
+		.then((response) => response.json())
+		.then((responsej) => {
+
+			console.log('recieved response from delete call');
+			console.log(responsej);
+			var callback = e.target.dataset.deletecallback;
+
+			if (callback) {
+				console.log('looking for ' + callback + ' in window');
+				console.log(window[callback]);
+				window[callback](responsej);
+			} else {
+				console.log("delete response received but no 'deletecallback' defined, so refreshing on " + document.location);
+				document.location = document.location;
+			}
+			
 		})
 		.catch((error) => {
+			console.error('error caught in delete fetch');
+			console.error(error);
 			alert(error);
 		});
 

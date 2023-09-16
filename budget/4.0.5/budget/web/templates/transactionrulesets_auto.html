@@ -10,7 +10,7 @@
        <h3>Showing {{ transactionrulesets_auto|length }} auto rule sets</h3>
        <a class="button" href="{% url "regroup_auto_records" tenant_id=1 %}">Regroup Records</a>        
 
-       {% include "transactionrulesets_list_table.html" with table=transactionrulesets_auto stats=auto_stats %}
+       {% include "_transactionrulesets_list_table.html" with table=transactionrulesets_auto stats=auto_stats %}
 
    </div>    
 </div>

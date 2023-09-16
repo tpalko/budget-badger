@@ -7,7 +7,7 @@ from django.urls import resolve
 from django.db.models import Q
 
 from web.util.viewutil import get_querystring
-from web.models import RecordMeta
+from web.models import RecordMeta, TransactionRuleSet
 
 def budget_context(request_context):
     '''Dynamically determine conventionally named js include file'''
@@ -30,8 +30,12 @@ def budget_context(request_context):
             'display': 'Records'
         },
         { 
-            'url': 'filters',
-            'display': 'Filters'
+            'url': 'tracing',
+            'display': 'Tracing'
+        },
+        { 
+            'url': 'record_typing',
+            'display': 'Record Typing'
         },
         { 
             'url': 'sorter',
@@ -62,5 +66,6 @@ def budget_context(request_context):
     return {
         'debug': debug,
         'menu': menu,
-        'record_types': RecordMeta.RECORD_TYPES
+        'record_types': RecordMeta.RECORD_TYPES,
+        'join_operators': TransactionRuleSet.join_operator_choices
     }

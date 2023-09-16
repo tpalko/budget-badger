@@ -562,8 +562,24 @@ class RecordGrouper(object):
     #     return stats or recordgroup.stats
     
     @staticmethod
-    def filter_accounted_records(records, less_than_priority=None, is_auto=None, refresh_cache=False, refresh_records=False):
+    def filter_accounted_records(records, less_than_priority=None, is_auto=None, refresh_cache=True, refresh_records=True):
         
+
+        '''
+        To get to this point (See models.records_from_rules)
+        1. get the rules in a rule set
+        2. construct a big query 
+        3. execute the query
+        4. pass the records in here
+        vvvv -- CACHE this result by priority + is_auto 
+        5. get ALL rule sets, pare down to those at a higher (1 is highest) priority and by user/machine (is_auto)
+        6. get ALL records for remaining rule sets into a lookup dict with rule set ID -> its record IDs
+        7. combine and flatten record IDs to get distinct set of records
+        8. make a lookup dict with record ID -> rule set IDs it is contained within
+        ^^^^ -- end CACHE 
+        9. filter out any records in that lookup dict from the records passed in here 
+
+        '''
         tx_rule_sets = TransactionRuleSet.objects.all()
 
         rule_index = get_rule_index(
@@ -574,8 +590,16 @@ class RecordGrouper(object):
             refresh_records=refresh_records
         )
 
+        # -- this is the actual removal of accounted records 
         pared = [ r for r in records if str(r.id) not in rule_index ]
         logger.info(f'Pared {len(records)} records to {len(pared)} by {len(rule_index)} accounted')
+
+        '''
+        TODO: RecordMeta.is_accounted should be integer, not boolean
+        when we calculate a set of records that is accounted (the keys of rule_index here) 
+        _less than a priority_, is_accounted should be set to that priority. Future queries 
+        can come in with a priority that...
+        '''
         return pared 
 
     @staticmethod 
@@ -610,9 +634,7 @@ class RecordGrouper(object):
                 records = RecordGrouper.filter_accounted_records(
                     records, 
                     less_than_priority=rule_set.priority, 
-                    is_auto=False, 
-                    refresh_cache=False,
-                    refresh_records=False)
+                    is_auto=False)
                 
                 stats = RecordGrouper.get_stats(records)
                 # stats = { k: stats[k] if stats[k] and stats[k] != "NaN" else 0 for k in stats.keys() }
@@ -640,7 +662,7 @@ class RecordGrouper(object):
 
             while True:
                 
-                records = Record.objects.exclude_type(record_type=RecordMeta.RECORD_TYPE_INTERNAL)
+                records = Record.budgeting.all()
                 
                 # logger.warning(f'{len(records)} records')
                 # total_amount = sum([ r.amount for r in records ])
@@ -655,10 +677,7 @@ class RecordGrouper(object):
                 # and any records left over can live in multiple auto groups? however if we want to eventually
                 # elevate the auto groups and prototransactions to take part in forecasting/projection, a
                 # single group-per-record must be held everywhere 
-                records = RecordGrouper.filter_accounted_records(
-                    records, 
-                    refresh_cache=False, 
-                    refresh_records=False)
+                records = RecordGrouper.filter_accounted_records(records)
 
                 logger.debug(f'True loop {true_loop} -- Using {len(records)} records as as base for description matching')
                 true_loop += 1
@@ -725,10 +744,7 @@ class RecordGrouper(object):
                         logger.debug("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
                         
                         records = transaction_rule_set.records(refresh=True)
-                        records = RecordGrouper.filter_accounted_records(
-                            records, 
-                            refresh_cache=False, 
-                            refresh_records=False)
+                        records = RecordGrouper.filter_accounted_records(records)
 
                         logger.info(f'Attempting rule {rule_attempt} -> {len(records)} records')
                         logger.debug("\n".join([ str(r) for r in records ]))

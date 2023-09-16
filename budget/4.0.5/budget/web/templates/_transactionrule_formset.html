@@ -1,3 +1,4 @@
+{% load budget_tags %}
 
 <div>
     {{ transactionrule_formset.management_form }}
@@ -17,8 +18,6 @@
     </div>
     <a id="another_form" href="#">+</a>            
 </div>
-
-{% include "_record_matcher_results.html" %}
 
 <script language="javascript">
 
@@ -54,9 +53,15 @@
     function minusForm(e) {
         e.preventDefault();
         var index = e.target.dataset.formdiv;
-        form.querySelector("#formdiv-" + index).remove();
+        if (index == 0) {
+            form.querySelectorAll("#formdiv-" + index + " input").forEach((e, i) => {
+                e.value = "";
+            })
+        } else {
+            form.querySelector("#formdiv-" + index).remove();
+        }        
         renumberFormDivs();
-        recordMatcherSubmit(e);
+        transactionRuleFieldHandler(e);
     }
 
     function addPopulatedRuleForm(inclusion, field, operator, match_value, event) {
@@ -64,22 +69,31 @@
 
         var formdivs = form.querySelectorAll(".formdiv");
         var index = form['form-TOTAL_FORMS'].value - 1;
-
         var found_unmodified = false;
+
+        console.debug('found ' + formdivs.length + ' formdivs, current index is ' + index);
+
         for (i=0; i<formdivs.length; i++) {
             var is_modified = formdivs[i].classList.contains('modified');
             var data_entered = formdivs[i].querySelector("[id$='-match_value']").value != "";
 
             if (!is_modified && !data_entered) {
+                console.debug('formdiv ' + i + '/' + formdivs.length + ' is not modified, no data entered');
                 index = i;
                 found_unmodified = true;
                 break;
-            }   
+            } else {
+                console.debug('formdiv ' + i + '/' + formdivs.length + ' modified ' + is_modified + ' data entered ' + data_entered);
+            }
         }
 
         if (!found_unmodified) {
+            console.debug('no unmodified formdiv found, clicking for a new one');
             document.querySelector("#another_form").click();
             index = form['form-TOTAL_FORMS'].value - 1;
+            console.debug('new formdiv index is ' + index);
+        } else {
+            console.debug('an unmodified formdiv was found, using it at index ' + index);
         }
         
         document.querySelector("#id_form-" + index + "-inclusion").value = inclusion;
@@ -87,7 +101,7 @@
         document.querySelector("#id_form-" + index + "-match_operator").value = operator;
         document.querySelector("#id_form-" + index + "-match_value").value = match_value;
 
-        recordMatcherSubmit(event);
+        transactionRuleFieldHandler(event);
     }
 
     function addForm(e) {
@@ -114,7 +128,7 @@
         renumberFormDivs();
     }
 
-    document.addEventListener('DOMContentLoaded', (e) => {
+    function setupTransactionRuleFormsetEvents() {
 
         var formset_div = document.querySelector("#transactionrule_formset");
 
@@ -122,8 +136,13 @@
 
         formset_div.querySelectorAll(".minusform").forEach((el, i) => {
             el.addEventListener('click', minusForm);
-        })
+        })        
+    }
 
-    });
+    function transactionRuleFormSetDomContentLoaded(e) {
+        setupTransactionRuleFormsetEvents();
+    }
 
+    document.addEventListener('DOMContentLoaded', transactionRuleFormSetDomContentLoaded);
+    
 </script>

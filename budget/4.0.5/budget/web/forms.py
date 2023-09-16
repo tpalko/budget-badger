@@ -39,6 +39,9 @@ class TransactionRuleForm(ModelForm):
     
     record_field_choices = [ (r.name, r.name,) for r in Record._meta.fields ]
     record_field_choices.extend([ ('uploaded_file__account__name', 'account')])
+    record_field_choices.extend([ ('meta_record_type', 'record_type')])
+    record_field_choices.extend([ ('meta_description', 'meta_description')])
+    record_field_choices.extend([ ('full_description', 'full_description')])
 
     id = CharField(widget=HiddenInput(), required=False)
     inclusion = ChoiceField(label='', choices=choiceify([TransactionRule.INCLUSION_FILTER, TransactionRule.INCLUSION_EXCLUDE]))
@@ -147,16 +150,22 @@ class RecordForm(ModelForm):
 
         super(RecordForm, self).is_valid()
 
+        missing_fields = [ f for f in ['uploaded_file', 'transaction_date', 'description', 'amount'] if f not in self.cleaned_data ]
+        
+        if len(missing_fields) > 0:
+            raise Exception(_(f'field(s) "{",".join(missing_fields)}" missing from the cleaned data of this record'))
+            
         # -- if a match is found under the same uploaded file, it's OK. 
         # -- one CSV download from the bank or CC agency should not have duplicates 
         # -- but it's conceivable that two transactions in that CSV match all fields 
         # -- however, if a match is found under a different file, 
         # -- it's likely this CSV download overlaps with a previous CSV download 
+        # -- and that record should be ignored 
         overlapping_records = Record.objects.filter(
             ~Q(uploaded_file=self.cleaned_data['uploaded_file']),
-            transaction_date=self.cleaned_data['transaction_date'] if 'transaction_date' in self.cleaned_data else None, 
-            description=self.cleaned_data['description'] if 'description' in self.cleaned_data else None, 
-            amount=self.cleaned_data['amount'] if 'amount' in self.cleaned_data else None
+            transaction_date=self.cleaned_data['transaction_date'], 
+            description=self.cleaned_data['description'], 
+            amount=self.cleaned_data['amount']
         )
         #     account_type=self.cleaned_data['account_type'] if 'account_type' in self.cleaned_data else None, 
         #     type=self.cleaned_data['type'] if 'type' in self.cleaned_data else None, 
@@ -166,8 +175,34 @@ class RecordForm(ModelForm):
         # )
 
         if len(overlapping_records) > 0:
-            raise ValidationError(_(f'RecordForm.is_valid: Another record(s) {",".join([ str(m.id) for m in overlapping_records ])} for a different upload (them:{",".join([ str(m.uploaded_file_id) for m in matches ])}, us:{self.cleaned_data["uploaded_file_id"] if "uploaded_file_id" in self.cleaned_data else self.cleaned_data["uploaded_file"]}) matching all fields already exists in the database.'))
+            overlapping_ids = ",".join([ str(m.id) for m in overlapping_records ])
+            overlapping_record_files = ",".join([ str(m.uploaded_file_id) for m in overlapping_records ])
+            our_upload_file = self.cleaned_data["uploaded_file_id"] if "uploaded_file_id" in self.cleaned_data else self.cleaned_data["uploaded_file"]
+            raise ValidationError(_(f'RecordForm.is_valid: Another record(s) {overlapping_ids} for a different upload (them:{overlapping_record_files}, us:{our_upload_file}) matching all fields already exists in the database.'))
         
+        # -- we also have the problem of institutions releasing CSV documents that change over time
+        # -- or may have bugs in the formatting or data that are fixed between two downloads that have overlapping
+        # -- date ranges and generated on either side of that fix.. 
+        # -- it's been observed that the description of a "MOBILE DEPOSIT" or "CHECK" is missing from a CSV
+        # -- and the same record shows up in a later download with that field correctly populated 
+        if self.cleaned_data['description'] is not None and self.cleaned_data['description'].strip() != '':
+
+            possible_fixed_duplicates = Record.objects.filter(
+                (Q(description__isnull=True) | Q(description='')),
+                ~Q(uploaded_file=self.cleaned_data['uploaded_file']),
+                transaction_date=self.cleaned_data['transaction_date'] if 'transaction_date' in self.cleaned_data else None,                 
+                amount=self.cleaned_data['amount'] if 'amount' in self.cleaned_data else None       
+            )
+
+            fixed_dupe_count = len(possible_fixed_duplicates)
+            if fixed_dupe_count > 0:
+                logger.warning(f'found {len(fixed_dupe_count)} possibly fixed duplicates in the database')
+
+            for pfd in possible_fixed_duplicates:
+                logger.warning(f'updating record {pfd.id} description "{pfd.description}" => "{self.cleaned_data["description"]}"')
+                pfd.description = self.cleaned_data['description']
+                pfd.save()
+                
         # -- the following python and mariadb techniques, respectively, (can) result in the same output 
         # hashlib.md5(json.dumps(r.extra_fields, ensure_ascii=True, sort_keys=True).encode('utf-8')).hexdigest() 
         # md5(extra_fields)

@@ -1,0 +1,10 @@
+{% load budget_tags %}
+
+<td>{{ m|lookup:"id" }}</td>
+<td>{{ m|lookup:"description" }}</td>
+<td>{{ m|lookup:"transaction_date" }}</td>
+<td>{{ m|lookup:"amount" }}</td>
+<td>{{ m|lookup:"meta_record_type" }}</td>
+<td>{{ m|lookup:"meta_description" }}</td>
+<td>{{ m|lookup:"core_fields_hash" }}</td>
+<td>{{ m|lookup:"extra_fields_hash" }}</td>

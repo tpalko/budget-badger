@@ -3,23 +3,30 @@
 
 {% block content %}
 
-{% if message %}
-<div>
-    {{ message }}
-</div>
-{% endif %}
-
-{% include "transactionruleset_edit.html" %}
-
 <div class="row">
     <div class="col-16">
         
+        {% if message %}
+        <div>
+            {{ message }}
+        </div>
+        {% endif %}
+
         <h3>Showing {{ transactionrulesets_manual|length }} manual rule sets</h3>
         <a class="button" href="{% url "regroup_manual_records" tenant_id=1 %}">Regroup Records</a>        
-
-        {% include "transactionrulesets_list_table.html" with table=transactionrulesets_manual stats=manual_stats %}
+        <a href="{% url "transactionruleset_create" tenant_id=1 %}">create new rule set</a>
 
     </div>    
+</div>
+<div class="row">
+    <div class="col-7">
+        <h3>Showing {{ credit_rulesets|length }} credit rule sets</h3>
+        {% include "_transactionrulesets_list_table.html" with table=credit_rulesets stats=credit_stats %}
+    </div>
+    <div class="col-7 col-offset-1">
+        <h3>Showing {{ debit_rulesets|length }} debit rule sets</h3>
+        {% include "_transactionrulesets_list_table.html" with table=debit_rulesets stats=debit_stats %}
+    </div>
 </div>
 
 {% endblock %}

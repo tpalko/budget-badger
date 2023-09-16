@@ -1,18 +1,20 @@
 {% load budget_tags %}
 
-<table style="width: 100%;" class="clicky-table">
-    <tr>
-        <th>desc</th>
-        <th>count</th>
-        <th>sum</th>
-        <th>%</th>
-    </tr>
-    {% for name in distinct_names %}        
-    <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
-        <td>{{ name|lookup:'description' }}</td>
-        <td>{{ name|lookup:'stats'|lookup:'count' }}</td>
-        <td>${{ name|lookup:'stats'|lookup:'sum'|format_currency }}</td>
-        <td>{{ name|lookup:'stats'|lookup:'percentage'|floatformat:"0" }}%</td>
-    </tr>
-    {% endfor %}    
-</table>
+<div class="record_matcher_result">
+    <table style="width: 100%;" class="clicky-table">
+        <tr>
+            <th>desc</th>
+            <th>count</th>
+            <th>sum</th>
+            <th>%</th>
+        </tr>
+        {% for name in distinct_names %}        
+        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <td>{{ name|lookup:'full_description' }}</td>
+            <td>{{ name|lookup:'stats'|lookup:'count' }}</td>
+            <td>${{ name|lookup:'stats'|lookup:'sum'|format_currency }}</td>
+            <td>{{ name|lookup:'stats'|lookup:'percentage'|floatformat:"0" }}%</td>
+        </tr>
+        {% endfor %}    
+    </table>
+</div>

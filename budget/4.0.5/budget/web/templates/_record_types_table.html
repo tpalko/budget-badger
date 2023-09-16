@@ -8,34 +8,38 @@
             <td title="{{ record.extra_fields }}">{{ record.description }}</td>
             <td>{{ record.amount }}</td>
             <td>                
-                {% csrf_token %}
-                {% if record_type == "internal" or record_type == "unknown" %}
-                    <table>
-                        <tr>
-                            <th>date</th>
-                            <th>acct</th>
-                            <th>desc</th>
-                            <th>amt</th>
-                            <th>type</th>
-                            <th></th>
-                        </tr>
-                        <tr>
-                            <td colspan="5" class="missing-data">no associated record</td>                        
-                            <td><input type="radio"  value="" name="assoc_id" checked /></td>
-                        </tr>
-                        {% for assoc in record.assoc %}
-                        <tr title="assoc record {{assoc.id}}">
-                            <td>{{ assoc.date }}</td>
-                            <td>{{ assoc.account }}</td>
-                            <td title="{{ assoc.extra_fields }}">{% if assoc.description %}{{ assoc.description }}{% else %}<span class="missing-data">no data</span>{% endif %}</td>        
-                            <td>{{ assoc.amount }}</td>
-                            <td>{{ assoc.meta_record_type }}</td>
-                            <td><input type="radio"  value="{{ assoc.id }}" name="assoc_id" /></td>
-                        </tr>
-                        {% endfor %}
-                    </table>
-                {% endif %}
-                {% include "_record_type_select.html" %}
+                <form id="form-record-{{ record.id }}">
+                    {% csrf_token %}
+                    {% if record_type == "internal" or record_type == "unknown" %}
+                        <table>
+                            <tr>
+                                <th>date</th>
+                                <th>acct</th>
+                                <th>desc</th>
+                                <th>amt</th>
+                                <th>type</th>
+                                <th></th>
+                            </tr>
+                            <tr>
+                                <td colspan="5" class="missing-data">no associated record</td>                        
+                                <td><input type="radio"  value="" name="{{ record.id }}-assoc_id" checked /></td>
+                            </tr>
+                            {% for assoc in record.assoc %}
+                            <tr title="assoc record {{assoc.id}}">
+                                <td>{{ assoc.date }}</td>
+                                <td>{{ assoc.account }}</td>
+                                <td title="{{ assoc.extra_fields }}">{% if assoc.description %}{{ assoc.description }}{% else %}<span class="missing-data">no data</span>{% endif %}</td>        
+                                <td>{{ assoc.amount }}</td>
+                                <td>{{ assoc.record_type }}</td>
+                                <td><input type="radio"  value="{{ assoc.id }}" name="{{ record.id }}-assoc_id" /></td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    {% endif %}
+                
+                    {% include "_record_meta_form.html" with selected_record=record %}
+                </form>
+                
             </td>   
         </tr>
     {% endfor %}

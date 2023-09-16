@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <table class="clicky-table">
+            <tr>
+            {% for h in header %}
+                <th>{{ h }}</th>
+            {% endfor %}
+                <th>core match</th>
+                <!--<th>extra match</th>-->
+            </tr>            
+            {% for m in meta_records %}
+                <tr>
+                    {% for h in header %}
+                        <td>{{ m|lookup:h }}</td>
+                    {% endfor %}                    
+                    <td>                        
+                        <table class="clicky-table" style="width: 100%">
+                            <tr style="width: 14%;">
+                            {% for h in match_header %}                                
+                                <th>{{ h }}</th>
+                            {% endfor %}
+                            </tr>
+                            {% if m|lookup:"core_match_records" %}
+                                {% include "_tracing_match_rows.html" with records=m|lookup:"core_match_records" %}
+                            {% elif m|lookup:"field_match_records" %}
+                                {% include "_tracing_match_rows.html" with records=m|lookup:"field_match_records" %}
+                            {% endif %}                            
+                        </table>                        
+                    </td>
+                    
+                    <!--
+                    {#                    
+                    <td>
+                        <table class="clicky-table">
+                            {% for r in m|lookup:"extra_match_records" %}
+                                <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+                                    {% for h in match_header %}
+                                        <td>{{ r|lookup:h }}</td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                        </table>
+                    </td>                    
+                    #}
+                    --> 
+                </tr>
+            {% endfor %}
+        </table>        
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script language="javascript">
+    
+</script>
+{% endblock %}

@@ -46,31 +46,35 @@
 
 <script language="javascript">
 
-    function handleRecordTypeSelect(e) {
+    function handleRecordMetaFormSubmit(e) {
         
         e.preventDefault();
+                
+        var form = e.target;
         
-        record_id = e.target.dataset.recordid;
-
-        var form = document.querySelector("form#form-recordtype-" + record_id);
         var data = new FormData(form);
+        var csrf = getCookie('csrftoken');
 
         var options = {
-            method: "POST",
-            body: data
+            method: form.method,
+            body: data,
+            headers: {
+                "X-CSRFToken": csrf
+            }
         }
 
-        var base_url = "{% url "update_record_type" tenant_id="000" record_id="111" %}";
-
-        url = base_url.replace(/000/, 1).replace(/111/, record_id);
-
-        fetch(url, options)
+        console.log('form data submitting');
+        console.debug(data);
+        
+        fetch(form.action, options)
             .then((response) => {
                 var responsej = response.json();
                 return responsej;
             })
             .then((response) => {
-                addErrorMessage(response.message)
+                response.messages.forEach((e, i) => {
+                    addErrorMessage(e);
+                })                
                 if (!response.success) {
                     e.target.value = response.data.original_record_type;
                 }
@@ -81,10 +85,14 @@
             });
     }
 
-    document.addEventListener('DOMContentLoaded', function() {
-		document.querySelectorAll("select[name='record_type']").forEach(( e, i ) => {
-			e.addEventListener('change', handleRecordTypeSelect);  
-        });
+    function setRecordTypeSelectListener() {
+        document.querySelectorAll("form.record_meta").forEach((e, i) => {
+            e.addEventListener("submit", handleRecordMetaFormSubmit);
+        })        
+    }
+
+    document.addEventListener('DOMContentLoaded', function(e) {
+		setRecordTypeSelectListener();
     });
 
 </script>

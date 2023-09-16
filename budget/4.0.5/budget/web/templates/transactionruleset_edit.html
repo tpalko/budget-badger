@@ -1,4 +1,7 @@
+{% extends "base.html" %}
 {% load budget_tags %}
+
+{% block content %}
 
 <div class="row">
     <div class="col-16">
@@ -8,43 +11,39 @@
 </div>
 
 <div class="row">
-    <div class="col-9">
-        {% if transactionruleset_form.id.value %} 
-            <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">
-        {% else %}
-            <form id="ruleform" method="POST" action="{% url "transactionruleset_create" tenant_id=1 %}">
-        {% endif %}
+    <div class="col-5">
+
+    {% if transactionruleset_form.id.value %} 
+        <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">
+    {% else %}
+        <form id="ruleform" method="POST" action="{% url "transactionruleset_create" tenant_id=1 %}">
+    {% endif %}
 
             {% csrf_token %}
 
-            <div>
-                {{ transactionruleset_form.errors }}
-                {% for bound_field in transactionruleset_form %} 
-                    <div>
-                        {% if not bound_field.is_hidden %} 
-                            {{ bound_field.label_tag }}
-                        {% endif %}
-                        {% if bound_field.name == "name" %} 
-                            {{ bound_field|tabindex:1 }}
-                        {% else %}
-                            {{ bound_field|tabindex:2 }}
-                        {% endif %}
-                    </div>
-                {% endfor %}        
+            <div id="ruleset_form">
+                {% include "_transactionruleset_form.html" %}
             </div>
-
-            {% include "_transactionrule_formset.html" %}
+            
+            <div id="rule_formset">
+                {% include "_transactionrule_formset.html" %}
+            </div>
 
             <input type="submit" name="save" value="save" />
             <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
-            
-            </form>
+        
+        </form>
+
+        {% include "_record_matcher_results.html" %}
     </div>
 </div>
 
+{% endblock %}
 
+<!--
+    
 <script language="javascript">
-
+/*
     var form;
     
     function formSubmit(e) {
@@ -60,7 +59,7 @@
             .then((response) => {
                 controller = undefined;
                 var responsej = response.json();
-                document.location = '{% url "transactionrulesets_list" tenant_id=1 %}';
+                document.location = '{# url "transactionrulesets_list" tenant_id=1 #}';
                 console.error('somehow we did not redirect on the response!')
             })
             .catch((error) => {
@@ -81,5 +80,7 @@
         // document.querySelector("select[name='recordfield']").addEventListener('change', updateResults);
 
     });
-
+*/
 </script>
+
+-->
