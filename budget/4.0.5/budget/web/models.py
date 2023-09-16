@@ -131,7 +131,7 @@ class UploadedFile(BaseModel):
 class Event(BaseModel):
 
     name = models.CharField(max_length=255)
-    started_at = models.DateField(null=False)
+    started_at = models.DateField(null=True)
     ended_at = models.DateField(null=True)
 
 class Property(BaseModel):
@@ -720,24 +720,24 @@ class Record(BaseModel):
         ).hexdigest()
         
         core_meta = RecordMeta.objects.filter(core_fields_hash=self.core_fields_hash).first()        
-        # meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
+        meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
 
         meta_copy = {}
-        # if meta:            
-        #     meta_copy = { 
-        #         d: meta.__dict__[d] 
-        #         for d in meta.__dict__.keys() 
-        #             if d in [ 
-        #                 f.name 
-        #                 for f in RecordMeta._meta.fields 
-        #             ] and d not in [
-        #                 'id', 
-        #                 'created_at', 
-        #                 'updated_at', 
-        #                 'deleted_at', 
-        #                 'extra_fields_hash' 
-        #             ] 
-        #     }
+        if meta:            
+            meta_copy = { 
+                d: meta.__dict__[d] 
+                for d in meta.__dict__.keys() 
+                    if d in [ 
+                        f.name 
+                        for f in RecordMeta._meta.fields 
+                    ] and d not in [
+                        'id', 
+                        'created_at', 
+                        'updated_at', 
+                        'deleted_at', 
+                        'extra_fields_hash' 
+                    ] 
+            }
 
         meta_copy.update({'core_fields_hash': self.core_fields_hash})
 

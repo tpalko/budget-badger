@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 def tokenize_records(records):
 
     amounts = [ abs(r.amount) for r in records ]
-    max_amount = max(amounts)
+    max_amount = max(amounts) if amounts else 0
 
     descs = set([ r.full_description() for r in records ])
 

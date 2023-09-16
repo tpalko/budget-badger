@@ -53,12 +53,19 @@
     function minusForm(e) {
         e.preventDefault();
         var index = e.target.dataset.formdiv;
-        if (index == 0) {
-            form.querySelectorAll("#formdiv-" + index + " input").forEach((e, i) => {
+        var total = form['form-TOTAL_FORMS'].value;
+        var formdiv = form.querySelector("#formdiv-" + index);
+
+        var description = formdiv.dataset.description;
+
+        document.querySelector("div.token_tags button[data-description='" + description + "']").classList.remove("selected");
+
+        if (total == 1) {
+            formdiv.querySelectorAll("input").forEach((e, i) => {
                 e.value = "";
             })
         } else {
-            form.querySelector("#formdiv-" + index).remove();
+            formdiv.remove();
         }        
         renumberFormDivs();
         transactionRuleFieldHandler(e);
@@ -73,6 +80,7 @@
 
         console.debug('found ' + formdivs.length + ' formdivs, current index is ' + index);
 
+        // cycle through all the forms and find the first unmodified AND empty one
         for (i=0; i<formdivs.length; i++) {
             var is_modified = formdivs[i].classList.contains('modified');
             var data_entered = formdivs[i].querySelector("[id$='-match_value']").value != "";
@@ -87,6 +95,7 @@
             }
         }
 
+        // if we didn't find one to reuse, add a new one
         if (!found_unmodified) {
             console.debug('no unmodified formdiv found, clicking for a new one');
             document.querySelector("#another_form").click();
@@ -96,6 +105,9 @@
             console.debug('an unmodified formdiv was found, using it at index ' + index);
         }
         
+        var formdiv = document.querySelector("div.formdiv#formdiv-" + index);
+        formdiv.dataset.description = match_value;
+
         document.querySelector("#id_form-" + index + "-inclusion").value = inclusion;
         document.querySelector("#id_form-" + index + "-record_field").value = field;
         document.querySelector("#id_form-" + index + "-match_operator").value = operator;

@@ -28,6 +28,12 @@
         {% include "_transactionrulesets_list_table.html" with table=debit_rulesets stats=debit_stats %}
     </div>
 </div>
+<div class="row">
+    <div class="col-7">
+        <h3>Showing {{ nostat_rulesets|length }} no stats rule sets</h3>
+        {% include "_transactionrulesets_list_table.html" with table=nostat_rulesets %}
+    </div>
+</div>
 
 {% endblock %}
 

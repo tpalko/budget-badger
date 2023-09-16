@@ -394,6 +394,10 @@ class RecordGrouper(object):
         BIWEEKLY = 2
         MONTHLY = 3
 
+        if len(recent_dates_gaps) == 0:
+            logger.warning(f'no gaps!')
+            return 
+            
         hist, bins = np.histogram(recent_dates_gaps, bins=timing_bins) #, weights=weights[0:-1])
 
         # nonzero_buckets = [ h for h in hist if h > 0 ]

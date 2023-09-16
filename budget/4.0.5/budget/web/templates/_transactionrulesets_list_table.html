@@ -3,8 +3,12 @@
 <div class="row">
 
     <div class="col-16">
-        Amount: ${{ stats|lookup:'totals'|lookup:'amount'|format_currency }}
-        Records: {{ stats|lookup:'totals'|lookup:'records' }}
+        {% if stats %}
+            Amount: ${{ stats|lookup:'totals'|lookup:'amount'|format_currency }}
+            Records: {{ stats|lookup:'totals'|lookup:'records' }}
+        {% else %}
+            I said no stats!
+        {% endif %}
     </div>
     
     <div class="col-16">

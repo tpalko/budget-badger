@@ -52,7 +52,7 @@
             <input type="hidden" name="tag_value" value="" />
             <div class="token_tags">
                 {% for token in tokens %}
-                <button class="tag_button" title="{{ token|lookup:"total" }}" value="{{ token|lookup:"description" }}" style="font-size: {{ token|lookup:"log_norm_amt" }}em;">{{ token|lookup:"description" }}</button>
+                <button data-description="{{ token|lookup:"description" }}" class="tag_button" title="{{ token|lookup:"total" }}" value="{{ token|lookup:"description" }}" style="font-size: {{ token|lookup:"log_norm_amt" }}em;">{{ token|lookup:"description" }}</button>
                 {% endfor %}
             </div>
         </form>
