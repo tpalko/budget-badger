@@ -1,9 +1,0 @@
-{% load budget_tags %}
-
-{% for r in records %}
-<tr>
-    {% for h in match_header %}
-        <td>{{ r|lookup:h }}</td>
-    {% endfor %}
-</tr>
-{% endfor %}                            

@@ -1,0 +1,48 @@
+{% load budget_tags %}
+
+<table class="clicky-table">
+    <tr>
+    {% for h in header %}
+        <th>{{ h }}</th>
+    {% endfor %}        
+    </tr>            
+    {% for r in records %}
+        <tr>
+            {% for h in header %}
+                <td>{{ r|lookup:h }}</td>
+            {% endfor %}                    
+            <td>                        
+                <table class="clicky-table" style="width: 100%">
+                    <tr style="width: 14%;">
+                    {% for h in match_header %}                                
+                        <th>{{ h }}</th>
+                    {% endfor %}
+                    </tr>
+                    {% for m in lookup|lookup:r.id %}
+                    <tr>
+                        {% for h in match_header %}
+                            <td>{{ m|lookup:h }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </table>                        
+            </td>
+            
+            <!--
+            {#                    
+            <td>
+                <table class="clicky-table">
+                    {% for r in m|lookup:"extra_match_records" %}
+                        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+                            {% for h in match_header %}
+                                <td>{{ r|lookup:h }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </table>
+            </td>                    
+            #}
+            --> 
+        </tr>
+    {% endfor %}
+</table>    

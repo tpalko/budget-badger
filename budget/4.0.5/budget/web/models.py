@@ -800,3 +800,7 @@ class RequiredTransactionTag(BaseModel):
 class TransactionSet(BaseModel):
 
     name = models.CharField(max_length=255, null=False)
+
+class TracingResults(BaseModel):
+
+    data = models.JSONField(null=False)

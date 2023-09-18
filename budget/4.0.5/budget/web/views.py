@@ -9,15 +9,16 @@ from django.forms import modelformset_factory
 import sys
 from enum import Enum 
 from datetime import datetime, timedelta
+from decimal import Decimal
 import logging
 import traceback
 from web.forms import new_transaction_rule_form_set, form_types, PropertyForm, VehicleForm, EventForm, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
-from web.models import records_from_rules, Property, Vehicle, Event, Settings, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
+from web.models import records_from_rules, TracingResults, Property, Vehicle, Event, Settings, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
-from web.util.viewutil import Searches, SEARCH_QUERIES, SEARCH_OPTIONS, cleanup_file, process_file, refresh_prototransaction, handle_transaction_rule_form_request, process_transaction_rule_forms, init_transaction_rule_forms, alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
+from web.util.viewutil import Searches, SEARCH_QUERIES, SEARCH_OPTIONS, fuzzy_comparator, cleanup_file, process_file, refresh_prototransaction, handle_transaction_rule_form_request, process_transaction_rule_forms, init_transaction_rule_forms, alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 from web.util.ruleindex import get_record_rule_index
 from web.util.tokens import tokenize_records
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
@@ -597,6 +598,7 @@ def record_typing(request, tenant_id, search=None):
             'account': p.uploaded_file.account_name,
             'amount': p.amount,
             'description': p.description,
+            'meta_description': p.meta_description,
             'meta_record_type': p.meta_record_type,
             'extra_fields': p.extra_fields,
             'assoc': []     
@@ -691,11 +693,9 @@ def update_record_meta(request, tenant_id):
     return JsonResponse(response)
 
 def _base_fields(obj, fields):
-    return { f: getattr(obj, f) for f in fields }
+    return { f: datetime.strftime(getattr(obj, f), '%Y-%m-%d') if f.find('_date') > 0 else float(getattr(obj, f)) if type(getattr(obj, f)) == Decimal else getattr(obj, f) for f in fields }
 
-def tracing(request, tenant_id, trace_by):
-
-    trace_by = 'recordmeta' if not trace_by else trace_by
+def tracing(request, tenant_id):
 
     '''
     orphaned core recordmetas
@@ -704,61 +704,117 @@ def tracing(request, tenant_id, trace_by):
     select m.extra_fields_hash from web_recordmeta m left join web_record r on r.extra_fields_hash = m.extra_fields_hash where m.extra_fields_hash is not null and r.id is null;
     select m.extra_fields_hash, m.core_fields_hash from web_recordmeta m left join web_record r on (r.extra_fields_hash = m.extra_fields_hash and m.extra_fields_hash is not null) or (r.core_fields_hash = m.core_fields_hash and m.core_fields_hash is not null) where r.id is null;
     '''
-    meta_records = []
+    
+    results = {}
 
-    record_base_fields = ['id', 'description', 'transaction_date', 'amount', 'meta_record_type', 'meta_description', 'core_fields_hash'] #, 'extra_fields_hash']
-    meta_base_fields = ['id', 'description', 'record_type', 'core_fields_hash'] #, 'extra_fields_hash']
+    weekago = datetime.utcnow() - timedelta(days=7)
 
-    if trace_by == 'recordmeta':
+    latest = TracingResults.objects.filter(created_at__gt=weekago).order_by('-created_at')
+
+    if len(latest) > 0:
+        results = latest[0].data
+
+    else:
+
+        record_base_fields = ['id', 'description', 'transaction_date', 'amount', 'meta_record_type', 'meta_description', 'core_fields_hash'] #, 'extra_fields_hash']
+        meta_base_fields = ['id', 'description', 'record_type', 'core_fields_hash'] #, 'extra_fields_hash']
+        core_fields = ['transaction_date', 'post_date', 'description', 'amount']
+
         
-        header = meta_base_fields
+
+        recordmeta_base_results = {
+            'header': meta_base_fields,
+            'records': [],
+            'matches': {
+                'core_matches': {
+                    'header': record_base_fields,
+                    'lookup': {}
+                }
+            }
+        }
+
         metas = RecordMeta.objects.filter(core_fields_hash__isnull=False)
 
         for meta in metas:
-            template_dict = {
-                **_base_fields(meta, header),
-                'core_match_records': [ 
-                    _base_fields(r, record_base_fields) for r in Record.objects.filter(core_fields_hash=meta.core_fields_hash) 
-                ],
-                # 'extra_match_records': [ 
-                #     _base_fields(r, record_base_fields) for r in Record.objects.filter(extra_fields_hash=meta.extra_fields_hash) 
-                # ]
+
+            recordmeta_base_results['matches']['core_matches']['lookup'][meta.id] = []
+            
+            core_matches = [ _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(core_fields_hash=meta.core_fields_hash) ]
+            
+            if len(core_matches) > 1:
+                recordmeta_base_results['matches']['core_matches']['lookup'][meta.id] = core_matches
+                recordmeta_base_results['records'].append(_base_fields(meta, meta_base_fields))
+            
+        results['recordmeta_base_results'] = recordmeta_base_results
+        
+        record_base_results = {
+            'header': record_base_fields,
+            'records': [],
+            'matches': {
+                'field_matches': {
+                    'header': record_base_fields,
+                    'lookup': {}
+                },
+                'fuzzy_matches': {
+                    'header': record_base_fields,
+                    'lookup': {}
+                }
             }
+        }
 
-            if len(template_dict['core_match_records']) > 1: # or len(template_dict['extra_match_records']) > 1:
-                meta_records.append(template_dict)
-
-    elif trace_by == 'records':
-
-        header = record_base_fields
         records = Record.objects.all()
+        posted_record_ids = []
+
+        logger.debug(f'scanning {len(records)} for field and fuzzy matches')
 
         for record in records:
 
+            if record.id in posted_record_ids:
+                logger.debug(f'skipping {record.id}, already seen')
+                continue 
+            
+            record_base_results['matches']['field_matches']['lookup'][record.id] = []
+            record_base_results['matches']['fuzzy_matches']['lookup'][record.id] = []
+
             lookup_dict = { 
-                f: getattr(record, f) for f in ['transaction_date', 'post_date', 'description', 'amount']
+                f: getattr(record, f) for f in core_fields
             }
 
-            template_dict = {
-                **_base_fields(record, header),
-                'field_match_records': [
-                    _base_fields(r, record_base_fields) for r in Record.objects.filter(~Q(id=record.id), **lookup_dict)
-                ],
-                # 'core_match_records': [ 
-                #     _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(core_fields_hash=meta.core_fields_hash) 
-                # ],
-                # 'extra_match_records': [ 
-                #     _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(extra_fields_hash=meta.extra_fields_hash) 
-                # ]
-            }
-            if len(template_dict['field_match_records']) > 0: # or len(template_dict['extra_match_records']) > 1:
-                meta_records.append(template_dict)
+            field_matches = [ _base_fields(r, record_base_fields) for r in Record.objects.filter(~Q(id=record.id), **lookup_dict) ]
+
+            fuzz_results = fuzzy_comparator(record, core_fields, ['description', 'amount'])
+            fuzzy_matches = [ _base_fields(r, record_base_fields) for f in fuzz_results.keys() for r in fuzz_results[f] ]
+
+            logger.debug(f'record-base results have {len(fuzzy_matches)} fuzzy matches, {len(field_matches)} field matches')
+
+            include_record = False 
+
+            if len(field_matches) > 0:
+                record_base_results['matches']['field_matches']['lookup'][record.id] = field_matches
+                include_record = True 
+
+            if len(fuzzy_matches) > 0:
+                record_base_results['matches']['fuzzy_matches']['lookup'][record.id] = fuzzy_matches
+                include_record = True 
+            
+            if include_record:
+                record_base_results['records'].append(_base_fields(record, record_base_fields))
+            
+            posted_record_ids.extend([ id for id in record_base_results['matches']['field_matches']['lookup'].keys() ])
+            
+        results['record_base_results'] = record_base_results
     
+        TracingResults.objects.create(data=results)
+
+    for resultset in results.keys():
+        results[resultset]['records'] = results[resultset]['records'][0:100]
+        logger.debug(f'trimmed {resultset} records to {len(results[resultset]["records"])}')
+        for m in results[resultset]['matches'].keys():
+            results[resultset]['matches'][m]['lookup'] = { id: results[resultset]['matches'][m]['lookup'][id] for id in results[resultset]['matches'][m]['lookup'].keys() if id in [ int(r['id']) for r in results[resultset]['records'] ] }
+            logger.debug(f'trimmed {m} matches to {len(results[resultset]["matches"][m]["lookup"].keys())}')
+
     context = {
-        'meta_records': meta_records, 
-        'header': header, 
-        'match_header': record_base_fields, 
-        'trace_by': trace_by
+        'results': results
     }
     
     return render(request, "tracing.html", context)

@@ -3,11 +3,15 @@ import os
 
 from django.conf import settings
 from django.template.loader import render_to_string
-from django.urls import resolve 
+from django.urls import resolve, reverse
 from django.db.models import Q
 
 from web.util.viewutil import get_querystring
 from web.models import RecordMeta, TransactionRuleSet
+
+def format_url(view_name, kwargs={}):
+    kwargs.update({'tenant_id': 1})
+    return reverse(view_name, kwargs=kwargs)
 
 def budget_context(request_context):
     '''Dynamically determine conventionally named js include file'''
@@ -18,47 +22,47 @@ def budget_context(request_context):
 
     menu = [
         { 
-            'url': 'model_list',
+            'url': format_url('model_list'),
             'display': 'Accounts/Cards'
         },
         { 
-            'url': 'files',
+            'url': format_url('files'),
             'display': 'Files'
         },
         { 
-            'url': 'records',
+            'url': format_url('records'),
             'display': 'Records'
         },
         { 
-            'url': 'tracing',
+            'url': format_url('tracing'),
             'display': 'Tracing'
         },
         { 
-            'url': 'record_typing',
+            'url': format_url('record_typing'),
             'display': 'Record Typing'
         },
         { 
-            'url': 'sorter',
+            'url': format_url('sorter'),
             'display': 'Sorter'
         },
         { 
-            'url': 'transactionrulesets_list',
+            'url': format_url('transactionrulesets_list'),
             'display': 'Rules'
-        },
+        },        
         { 
-            'url': 'transactionrulesets_auto',
+            'url': format_url('transactionrulesets_auto'),
             'display': 'Auto Groups'
         },
         { 
-            'url': 'transactions',
+            'url': format_url('transactions'),
             'display': 'Transactions'
         },
         { 
-            'url': 'projection',
+            'url': format_url('projection'),
             'display': 'Projection'
         },
         { 
-            'url': 'settings',
+            'url': format_url('settings'),
             'display': 'Settings'
         },
     ]

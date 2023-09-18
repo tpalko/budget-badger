@@ -25,6 +25,7 @@
 
         var formDivs = document.querySelectorAll(".formdiv");    
         form['form-TOTAL_FORMS'].value = formDivs.length;
+        var formsWithId = 0;
 
         formDivs.forEach((el, formDivIndex) => {
 
@@ -47,7 +48,15 @@
             el.querySelector(".minusform").dataset.formdiv = formDivIndex;
 
             el.id = "formdiv-" + (formDivIndex);
+
+            var hidden_id_input = el.querySelector("input[type='hidden'][id='id_form-" + formDivIndex + "-id']").value;
+            console.log('hidden id input for ' + formDivIndex + ' is ' + hidden_id_input);
+            if (hidden_id_input !== null && hidden_id_input != "") {
+                formsWithId++;        
+            }
         });
+
+        form['form-INITIAL_FORMS'].value = formsWithId;
     }
 
     function minusForm(e) {
@@ -57,8 +66,11 @@
         var formdiv = form.querySelector("#formdiv-" + index);
 
         var description = formdiv.dataset.description;
-
-        document.querySelector("div.token_tags button[data-description='" + description + "']").classList.remove("selected");
+        
+        var possible_tag = document.querySelector("div.token_tags button[data-description='" + description + "']");
+        if (possible_tag != null) {
+            possible_tag.classList.remove("selected");
+        }        
 
         if (total == 1) {
             formdiv.querySelectorAll("input").forEach((e, i) => {
@@ -75,10 +87,12 @@
         // TODO: find the bottommost unmodified form, if exists populate that, otherwise add new 
 
         var formdivs = form.querySelectorAll(".formdiv");
-        var index = form['form-TOTAL_FORMS'].value - 1;
+        var last_index = form['form-TOTAL_FORMS'].value - 1;
         var found_unmodified = false;
 
-        console.debug('found ' + formdivs.length + ' formdivs, current index is ' + index);
+        console.debug('found ' + formdivs.length + ' formdivs, current last index is ' + last_index);
+
+        var index_to_use;
 
         // cycle through all the forms and find the first unmodified AND empty one
         for (i=0; i<formdivs.length; i++) {
@@ -87,7 +101,7 @@
 
             if (!is_modified && !data_entered) {
                 console.debug('formdiv ' + i + '/' + formdivs.length + ' is not modified, no data entered');
-                index = i;
+                index_to_use = i;
                 found_unmodified = true;
                 break;
             } else {
@@ -99,19 +113,19 @@
         if (!found_unmodified) {
             console.debug('no unmodified formdiv found, clicking for a new one');
             document.querySelector("#another_form").click();
-            index = form['form-TOTAL_FORMS'].value - 1;
-            console.debug('new formdiv index is ' + index);
+            index_to_use = form['form-TOTAL_FORMS'].value - 1;
+            console.debug('new formdiv index is ' + index_to_use);
         } else {
-            console.debug('an unmodified formdiv was found, using it at index ' + index);
+            console.debug('an unmodified formdiv was found, using it at index ' + index_to_use);
         }
         
-        var formdiv = document.querySelector("div.formdiv#formdiv-" + index);
+        var formdiv = document.querySelector("div.formdiv#formdiv-" + index_to_use);
         formdiv.dataset.description = match_value;
 
-        document.querySelector("#id_form-" + index + "-inclusion").value = inclusion;
-        document.querySelector("#id_form-" + index + "-record_field").value = field;
-        document.querySelector("#id_form-" + index + "-match_operator").value = operator;
-        document.querySelector("#id_form-" + index + "-match_value").value = match_value;
+        document.querySelector("#id_form-" + index_to_use + "-inclusion").value = inclusion;
+        document.querySelector("#id_form-" + index_to_use + "-record_field").value = field;
+        document.querySelector("#id_form-" + index_to_use + "-match_operator").value = operator;
+        document.querySelector("#id_form-" + index_to_use + "-match_value").value = match_value;
 
         transactionRuleFieldHandler(event);
     }

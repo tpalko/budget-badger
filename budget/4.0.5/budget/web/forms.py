@@ -194,14 +194,19 @@ class RecordForm(ModelForm):
                 amount=self.cleaned_data['amount'] if 'amount' in self.cleaned_data else None       
             )
 
-            fixed_dupe_count = len(possible_fixed_duplicates)
-            if fixed_dupe_count > 0:
-                logger.warning(f'found {len(fixed_dupe_count)} possibly fixed duplicates in the database')
+            corrected_count = 0
 
             for pfd in possible_fixed_duplicates:
                 logger.warning(f'updating record {pfd.id} description "{pfd.description}" => "{self.cleaned_data["description"]}"')
                 pfd.description = self.cleaned_data['description']
                 pfd.save()
+                corrected_count += 1
+            
+            fixed_dupe_count = len(possible_fixed_duplicates)
+
+            if fixed_dupe_count > 0:
+                logger.warning(f'found {fixed_dupe_count} possibly fixed duplicates in the database')
+                raise ValidationError(_(f'RecordForm.is_valid: {fixed_dupe_count} possibly fixed duplicates matched, {corrected_count} corrected, form invalid'))
                 
         # -- the following python and mariadb techniques, respectively, (can) result in the same output 
         # hashlib.md5(json.dumps(r.extra_fields, ensure_ascii=True, sort_keys=True).encode('utf-8')).hexdigest() 

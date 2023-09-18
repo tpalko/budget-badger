@@ -3,54 +3,55 @@
 
 {% block content %}
 
+<!--
+    { 'results':
+        {
+            'recordmeta_base_results': {
+                'header'
+                'records': []
+                'matches': {
+                    'core_matches': {
+                        'header'
+                        'lookup': {}
+                    }
+                }
+            },
+            'record_base_results': {
+                'header'
+                'records': []
+                'matches': {
+                    'field_matches': {
+                        'header'
+                        'lookup': {}
+                    },
+                    'fuzzy_matches': {
+                        'header'
+                        'lookup': {}
+                    }
+                }
+            }
+        }
+-->
 <div class="row">
     <div class="col-16">
-        <table class="clicky-table">
-            <tr>
-            {% for h in header %}
-                <th>{{ h }}</th>
+        <h3>Record Tracing by <strong>{{ trace_by }}</strong></h3>
+
+        <ul id="tabs-tracing" class="tabs">
+            {% for r in results %}
+                {% for m in results|lookup:r|lookup:"matches" %}
+                    <li id="{{ m }}">{{ m }}</li>
+                {% endfor %}
             {% endfor %}
-                <th>core match</th>
-                <!--<th>extra match</th>-->
-            </tr>            
-            {% for m in meta_records %}
-                <tr>
-                    {% for h in header %}
-                        <td>{{ m|lookup:h }}</td>
-                    {% endfor %}                    
-                    <td>                        
-                        <table class="clicky-table" style="width: 100%">
-                            <tr style="width: 14%;">
-                            {% for h in match_header %}                                
-                                <th>{{ h }}</th>
-                            {% endfor %}
-                            </tr>
-                            {% if m|lookup:"core_match_records" %}
-                                {% include "_tracing_match_rows.html" with records=m|lookup:"core_match_records" %}
-                            {% elif m|lookup:"field_match_records" %}
-                                {% include "_tracing_match_rows.html" with records=m|lookup:"field_match_records" %}
-                            {% endif %}                            
-                        </table>                        
-                    </td>
-                    
-                    <!--
-                    {#                    
-                    <td>
-                        <table class="clicky-table">
-                            {% for r in m|lookup:"extra_match_records" %}
-                                <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
-                                    {% for h in match_header %}
-                                        <td>{{ r|lookup:h }}</td>
-                                    {% endfor %}
-                                </tr>
-                            {% endfor %}
-                        </table>
-                    </td>                    
-                    #}
-                    --> 
-                </tr>
+        </ul>
+
+        {% for r in results %}
+            {% for m in results|lookup:r|lookup:"matches" %}
+                <div id="tabs-tracing-{{ m }}">
+                    {% include "_tracing_results_table.html" with records=results|lookup:r|lookup:"records" lookup=results|lookup:r|lookup:"matches"|lookup:m|lookup:"lookup'" header=results|lookup:r|lookup:"header" match_header=results|lookup:r|lookup:"matches"|lookup:m|lookup:"header" %}
+                </div>
             {% endfor %}
-        </table>        
+        {% endfor %}
+        
     </div>
 </div>
 

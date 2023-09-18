@@ -20,9 +20,10 @@
 		</div>
 		<div class="col-13 pull-right">
 			<ul class="menu">
-				{% for menuitem in menu %}
-					{% url menuitem|lookup:"url" tenant_id="1" as this_url %}
-					<li class="{% if request.path == this_url %}selected{% endif %}"><a href="{{ this_url }}">{{ menuitem|lookup:"display" }}</a></li>
+				{% for menuitem in menu %}					
+					<li class="{% if request.path == menuitem|lookup:"url" %}selected{% endif %}">
+                        <a href="{{ menuitem|lookup:"url" }}">{{ menuitem|lookup:"display" }}</a>
+                    </li>
 				{% endfor %}
 			</ul>			
 		</div>
@@ -87,6 +88,7 @@
 
     function setRecordTypeSelectListener() {
         document.querySelectorAll("form.record_meta").forEach((e, i) => {
+            console.debug('catching submit for ' + e);
             e.addEventListener("submit", handleRecordMetaFormSubmit);
         })        
     }

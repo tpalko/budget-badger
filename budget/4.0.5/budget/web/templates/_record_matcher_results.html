@@ -98,9 +98,9 @@
             }
         }
 
-        document.querySelector("#record_matcher_results").style.display = "block";
-        document.querySelector("#ruleset_evaluated").innerHTML = data.data.ruleset_evaluated;
         document.querySelector("#match_errors").innerHTML = matchErrors;
+
+        document.querySelector("#record_matcher_results").style.display = "block";
 
         var positive_records = document.querySelector("#positive-records");
         var positive_heatmaps = document.querySelector("#positive-heatmaps");
@@ -108,38 +108,45 @@
         var negative_heatmaps = document.querySelector("#negative-heatmaps");
 
         positive_records.querySelector("#ruleresults").replaceChildren();        
-        positive_records.querySelector("#recordstats").innerHTML = data.data.positive.recordstats;
-        positive_records.querySelector("#aggregate").innerHTML = data.data.positive.aggregate;        
-        positive_records.querySelector("#ruleresults").innerHTML = data.data.positive.ruleresults;            
-        positive_heatmaps.querySelector("#heatmaps").innerHTML = data.data.positive.heatmaps;
-
         negative_records.querySelector("#ruleresults").replaceChildren();        
-        negative_records.querySelector("#recordstats").innerHTML = data.data.negative.recordstats;
-        negative_records.querySelector("#aggregate").innerHTML = data.data.negative.aggregate;        
-        negative_records.querySelector("#ruleresults").innerHTML = data.data.negative.ruleresults;            
-        negative_heatmaps.querySelector("#heatmaps").innerHTML = data.data.negative.heatmaps;
-        
-        if (data.data.positive.record_ids !== undefined) {
-            positive_records.querySelector("form input[name='record_ids']").value = data.data.positive.record_ids;
-            positive_records.querySelector(".bulk_record_count").innerHTML = "(" + data.data.positive.record_ids.split(',').length + " records)";
-        } else {
-            addErrorMessage("The server returned 'undefined' for credit record IDs")
-        }
-        
-        if (data.data.negative.record_ids !== undefined) {
-            negative_records.querySelector("form input[name='record_ids']").value = data.data.negative.record_ids;
-            negative_records.querySelector(".bulk_record_count").innerHTML = "(" + data.data.negative.record_ids.split(',').length + " records)";
-        } else {
-            addErrorMessage("The server returned 'undefined' for debit record IDs")
-        }
 
-        setRecordTypeSelectListener();
-        
-        document.querySelectorAll("[class^='heat-']").forEach((el, i) => {
-            el.addEventListener('click', (e) => {
-                console.log('this feature is not available yet.. maybe someday it will filter the list of records shown by the region you just clicked on.. ')
+        if (data.success) {
+
+            document.querySelector("#ruleset_evaluated").innerHTML = data.data.ruleset_evaluated;        
+            
+            positive_records.querySelector("#recordstats").innerHTML = data.data.positive.recordstats;
+            positive_records.querySelector("#aggregate").innerHTML = data.data.positive.aggregate;        
+            positive_records.querySelector("#ruleresults").innerHTML = data.data.positive.ruleresults;            
+            positive_heatmaps.querySelector("#heatmaps").innerHTML = data.data.positive.heatmaps;
+            
+            negative_records.querySelector("#recordstats").innerHTML = data.data.negative.recordstats;
+            negative_records.querySelector("#aggregate").innerHTML = data.data.negative.aggregate;        
+            negative_records.querySelector("#ruleresults").innerHTML = data.data.negative.ruleresults;            
+            negative_heatmaps.querySelector("#heatmaps").innerHTML = data.data.negative.heatmaps;
+            
+            if (data.data.positive.record_ids !== undefined) {
+                positive_records.querySelector("form input[name='record_ids']").value = data.data.positive.record_ids;
+                positive_records.querySelector(".bulk_record_count").innerHTML = "(" + data.data.positive.record_ids.split(',').length + " records)";
+            } else {
+                addErrorMessage("The server returned 'undefined' for credit record IDs")
+            }
+            
+            if (data.data.negative.record_ids !== undefined) {
+                negative_records.querySelector("form input[name='record_ids']").value = data.data.negative.record_ids;
+                negative_records.querySelector(".bulk_record_count").innerHTML = "(" + data.data.negative.record_ids.split(',').length + " records)";
+            } else {
+                addErrorMessage("The server returned 'undefined' for debit record IDs")
+            }
+
+            setRecordTypeSelectListener();
+            
+            document.querySelectorAll("[class^='heat-']").forEach((el, i) => {
+                el.addEventListener('click', (e) => {
+                    console.log('this feature is not available yet.. maybe someday it will filter the list of records shown by the region you just clicked on.. ')
+                });
             });
-        });
+        }
+        
     }
 
     function handleRuleFormModified(e) {

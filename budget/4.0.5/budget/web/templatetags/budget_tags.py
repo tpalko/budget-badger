@@ -2,6 +2,9 @@ from django import template
 from django.utils.safestring import mark_safe
 from web.models import RecurringTransaction
 from datetime import datetime 
+import logging
+
+logger = logging.getLogger(__name__)
 
 register = template.Library()
 
@@ -40,14 +43,15 @@ def format_currency(val):
 
 @register.filter()
 def lookup(obj, key):
+	# logger.debug(f'looking up {key} in object')
 	val = None 
 	try:
 		if type(obj) == dict:			
 			val = obj[str(key)]
 			# val = obj.__getattribute__(str(key))
-		else:
+		else:			
 			val = obj.__getattribute__(str(key))
-		
+			
 		# if key == 'date':
 		# 	val = datetime.strftime(val, "%n/%d/%y")
 	except KeyError as ke:

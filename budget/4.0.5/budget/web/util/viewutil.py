@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 import logging 
 import sys 
 import traceback 
+from decimal import Decimal
 from enum import Enum
 
 
@@ -54,6 +55,15 @@ SEARCH_QUERIES = {
     Searches.SEARCH_ALL_CREDITS.value: Q(amount__gt=0),
     Searches.SEARCH_ALL_DEBITS.value: Q(amount__lt=0)
 }
+
+def fuzzy_comparator(obj, all_fields, fuzzy_fields):
+    our_fields = { f: getattr(obj, f) for f in all_fields }
+    fuzzy_matches = {}
+    for f in fuzzy_fields:
+        test = our_fields.copy()
+        del test[f]
+        fuzzy_matches[f] = type(obj).objects.filter(~Q(id=obj.id), **test)
+    return fuzzy_matches 
 
 def transaction_type_display(transaction_type):
     return [ choice_tuple[1] for choice_tuple in TransactionTypes.transaction_type_choices if choice_tuple[0] == transaction_type ][0]
@@ -450,8 +460,9 @@ def save_processed_records(records, uploadedfile):
 
         try:
 
+            # -- the filter will not find database records unless the types match exactly
             lookup_dict = { 
-                f: record[f] for f in ['transaction_date', 'post_date', 'description', 'amount']
+                f: Decimal(str(record[f])) if f == 'amount' else datetime.strftime(record[f], '%Y-%m-%d') if f.find('_date') > 0 else record[f] for f in ['transaction_date', 'post_date', 'description', 'amount']
             }
 
             # lookup_dict = { 
@@ -462,7 +473,7 @@ def save_processed_records(records, uploadedfile):
 
             logger.debug(f'looking up record with {lookup_dict}')
 
-            db_records = Record.objects.filter(**lookup_dict)
+            db_records = Record.objects.filter(**lookup_dict) # transaction_date=record['transaction_date'], post_date=record['post_date'], description=record['description'], amount=Decimal(record['amount']))
 
             if len(db_records) > 0:
                 logger.info(f'saving record, but {len(db_records)} match(es) ({",".join([ str(r.id) for r in db_records ]) }) found for {record}')
