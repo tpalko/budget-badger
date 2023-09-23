@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <h3>Alignment</h3>
+        <h4>Credit: ${{ credit_total|format_currency }}</h4>
+        <h4>Debit: ${{ debit_total|format_currency }}</h4>
+        <h4>Monthly expected: ${{ total|format_currency }}</h4>
+    </div>
+    <div class="col-16">        
+        <table>
+            <tr>
+                <th>month</th>
+                <th>spent</th>
+                <th>earned</th>
+                <th>balance</th>
+                <th>% accounted $</th>
+                <th>% unaccounted $</th>
+                <th>% unaccounted credit $</th>
+                <th>% unaccounted debit $</th>
+                <th>coverage</th>                
+            </tr>
+            {% for month_start in monthly_records %}
+                <tr>
+                    <td>{{ month_start }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"expense" }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"earn" }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"total" }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"accounted_percent" }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"unaccounted_percent" }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"unaccounted_credit_amount_percent" }}</td>
+                    <td>{{ monthly_records|lookup:month_start|lookup:"unaccounted_debit_amount_percent" }}</td>
+                    <td>
+                        {% for b in monthly_records|lookup:month_start|lookup:"brackets" %}                            
+                            <div class="coverage_brackets">
+                                <span class="name">{{ b|lookup:"name" }}</span>{% for s in b|lookup:"segments" %}<span title="{{ s|lookup:"title" }}" class="{{ s|lookup:"class" }}" style="width: {{ s|lookup:"width"|mult:4 }}px;"></span>{% endfor %}
+                            </div>
+                        {% endfor %}
+                    </td>                    
+                </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script language="javascript">
+    
+    
+</script>
+{% endblock %}

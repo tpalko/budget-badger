@@ -1,8 +1,8 @@
 {% load budget_tags %}
 
-<table class="clicky-table">
+<table>
     {% for record in records %} 
-        <tr title="record {{ record.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr title="record {{ record.id }}">
             <td>{{ record.date }}</td>
             <td>{{ record.account }}</td>
             <td title="{{ record.extra_fields }}">{{ record.description }}</td>

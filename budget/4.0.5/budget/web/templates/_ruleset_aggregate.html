@@ -1,7 +1,7 @@
 {% load budget_tags %}
 
 <div class="record_matcher_result">
-    <table style="width: 100%;" class="clicky-table">
+    <table>
         <tr>
             <th>desc</th>
             <th>count</th>
@@ -9,7 +9,7 @@
             <th>%</th>
         </tr>
         {% for name in distinct_names %}        
-        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr>
             <td>{{ name|lookup:'full_description' }}</td>
             <td>{{ name|lookup:'stats'|lookup:'count' }}</td>
             <td>${{ name|lookup:'stats'|lookup:'sum'|format_currency }}</td>

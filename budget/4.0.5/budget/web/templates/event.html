@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <h3>{{ event.name }}: {{ event.started_at }} - {{ event.ended_at }}</h3>
+    </div>
+    <div class="col-16">
+        <table>
+            {% for record in records %}
+                <tr>
+                    <td>{{ record.transaction_date }}</td>
+                    <td>{{ record.description }}</td>
+                    <td>{{ record.amount }}</td>
+                    <td>
+                        {% include "_record_meta_form.html" with selected_record=record %}
+                    </td>
+                </tr>
+            {% endfor %}
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script language="javascript">
+    
+    
+</script>
+{% endblock %}

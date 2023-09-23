@@ -8,15 +8,24 @@ import traceback
 
 from django.db.models import Q
 
-import django
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
 os.environ['DJANGO_SETTINGS_MODULE'] = 'budget.settings_dev'
-django.setup()
 
 from django.conf import settings 
 
+print(settings.INSTALLED_APPS)
+
+# settings.configure()
+
+import django
+
+django.setup()
+
+
+
 import json
-from web.models import Record, RecordMeta, TransactionRuleSet, ProtoTransaction, TransactionRule
+from web.models import Record, UploadedFile, TransactionRuleSet, ProtoTransaction, TransactionRule
 from web.util.modelutil import TransactionTypes
 from web.util.ruleindex import get_rule_index
 import web.util.dates as utildates
@@ -131,14 +140,14 @@ class RecordGrouper(object):
         return weights 
 
     @staticmethod 
-    def _get_values_in_winning_bin(values, weights):
-        hist, bins = np.histogram(values, weights=weights)
+    def _get_values_in_winning_bin(values, bins=None, weights=None):
+        hist, bins = np.histogram(values, bins=bins, weights=weights)
         low = bins[hist.argmax()]
         high = bins[hist.argmax() + 1]
 
         stats_logger.debug(f'low: {low} high: {high}')
 
-        return [ a for a in values if a >= low and a <= high ]
+        return [ a for a in values if a >= low and a <= high ], hist.argmax()
 
     @staticmethod
     def _get_timings(records):
@@ -209,7 +218,7 @@ class RecordGrouper(object):
         # -- if there's at least one nonzero weight 
         if not all([ w == 0 for w in weights ]):
 
-            gaps_in_bin = RecordGrouper._get_values_in_winning_bin(recent_dates_gaps, weights[0:-1])
+            gaps_in_bin, winning_bin = RecordGrouper._get_values_in_winning_bin(recent_dates_gaps, weights[0:-1])
 
             # -- get the max of all the amounts in the winning bin
             low_gap = min(gaps_in_bin or [0])
@@ -318,7 +327,7 @@ class RecordGrouper(object):
         if not all([ w == 0 for w in weights ]):
             
             # -- get the max of all the amounts in the winning bin
-            recurring_amount = max(RecordGrouper._get_values_in_winning_bin(recent_amounts, weights) or [0])
+            recurring_amount, winning_bin = max(RecordGrouper._get_values_in_winning_bin(recent_amounts, weights) or [0])
 
             is_active = True 
 
@@ -367,74 +376,243 @@ class RecordGrouper(object):
         
         return cat
     
+    @staticmethod
+    def months():
+    
+        now = datetime.now()
+        year = now.year 
+        month = now.month
+
+        while True:
+                    
+            month_start = datetime.strptime(f'{year}-{month}-1', '%Y-%m-%d')
+
+            next_month = month + 1
+            next_year = year 
+            if next_month > 12:
+                next_month = 1
+                next_year = year + 1
+
+            month_end = datetime.strptime(f'{next_year}-{next_month}-1', '%Y-%m-%d')
+
+            yield month_start, month_end
+
+            month = month - 1
+            if month == 0:
+                month = 12
+                year = year - 1        
+                
+    @staticmethod
+    def record_magnitude(records):
+        '''For given records, returns the absolute magnitude of all'''
+
+        return sum([ abs(r.amount) for r in records ])
+
+    @staticmethod
+    def record_split(records):
+        '''For given records, returns the split of credit and debit records'''
+
+        credit_records = [ r for r in records if r.amount > 0 ]
+        debit_records = [ r for r in records if r.amount < 0 ]
+
+        return credit_records, debit_records
+
+    @staticmethod
+    def record_magnitude_split(records):
+        '''For given records, returns credit sum, credit count, debit sum, debit count'''
+
+        credit_records, debit_records = RecordGrouper.record_split(records)
+
+        total_credit = RecordGrouper.record_magnitude(credit_records)
+        total_debit = RecordGrouper.record_magnitude(debit_records)
+
+        return total_credit, len(credit_records), total_debit, len(debit_records)
+
+    @staticmethod 
+    def get_monthly_stats(rule_set, break_after_misses=3):
+
+        misses = 0
+        monthly_stats = {}
+
+        for month_start, month_end in RecordGrouper.months():
+            
+            records = rule_set.records(refresh=False).filter(transaction_date__gte=month_start, transaction_date__lt=month_end)
+
+            if len(records) == 0:
+                misses += 1
+
+            records, removed = RecordGrouper.filter_accounted_records(
+                records, 
+                less_than_priority=rule_set.priority, 
+                is_auto=False,
+                refresh_cache=False)
+
+            recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=False)
+
+            credit_sum, credit_count, debit_sum, debit_count = RecordGrouper.record_magnitude_split(recent_records)
+
+            # of_month = 0
+
+            # if len(recent_records) > 1:
+            #     start = recent_records[0].transaction_date
+            #     end = recent_records[-1].transaction_date 
+            #     range_seconds = (end - start).total_seconds()
+            #     of_month = (range_seconds*1.0) / (60*60*24*30)
+
+            # for d in amount_split.keys():
+            #     if len(amount_split[d]['amounts']) > 1:
+            #         if of_month >= 0.8:
+            #             amount_split[d]['monthly_average'] = sum(amount_split[d]['amounts']) / of_month
+            #         else: 
+            #             amount_split[d]['monthly_average'] = sum(amount_split[d]['amounts'])
+            #     else:
+            #         amount_split[d]['monthly_average'] = 0
+
+            #         # elif of_month >= 0.8:
+            #         #     amounts[d]['monthly_average'] = sum(amounts[d])
+
+            monthly_stats[datetime.strftime(month_start, "%Y-%m")] = {
+                'debit': float(debit_sum),
+                'credit': float(credit_sum),
+                'debit_count': debit_count,
+                'credit_count': credit_count
+            }
+
+            if misses >= break_after_misses:
+                break 
+        
+        return monthly_stats
+
     @staticmethod 
     def get_meaningful_stats(records):
-        recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=False)
-        recent_records_dates = [ r.transaction_date for r in recent_records ]
-        recent_dates_np = np.array(recent_records_dates)
-        
-        recent_dates_gaps = [ g.total_seconds()/(60*60*24) for g in np.diff(recent_dates_np) ]
-        
-        weights = RecordGrouper._get_recency_weights(recent_records)
-        
-        timing_bins = [
-            0, # -- start of daily
-            5, # -- start of weekly
-            10, # -- start of bi-weekly
-            20, # -- start of monthly
-            40, # -- dead space between monthly and semi-annually
-            160, # -- start of semi-annually
-            200, # -- dead space between semi-annually and annually
-            300, # -- start of annually
-            400 
-        ]
 
-        DAILY = 0
-        WEEKLY = 1
-        BIWEEKLY = 2
-        MONTHLY = 3
+        '''
+            is it active?
+                find the typical gap between records 
+                find the latest record in this set
+                find the latest imported date shared by all accounts/cards represented in this set 
+                if the latest imported date is later than that latest record by more than 10% greater than the typical gap
+                it's inactive 
 
-        if len(recent_dates_gaps) == 0:
-            logger.warning(f'no gaps!')
-            return 
+            if active, what is the expected amount per week, month, year?
+                if the records are frequent and fairly regular, (total / days) * 30 = monthly
+                if spanning a year or more, do some months total more by a significant amount? does this bear out for the same month over years?
+                if not so frequent, bin up the gaps. if there's a clear winner on the order of weekly, biweekly, monthly, etc. this is the overall period
+                if too scattered, bin up the amounts first and then bin up the gaps within the amount bins
+                if there's a clear winner, the records in this amount bin may be grouped separately 
+
+        '''
+
+        stats = {}
+
+        if len(records) > 0:
+                
+            recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=False)
+            recent_records_dates = [ r.transaction_date for r in recent_records ]
+            recent_dates_np = np.array(recent_records_dates)
             
-        hist, bins = np.histogram(recent_dates_gaps, bins=timing_bins) #, weights=weights[0:-1])
+            recent_dates_gaps = [ g.total_seconds()/(60*60*24) for g in np.diff(recent_dates_np) ]
+            
+            # weights = RecordGrouper._get_recency_weights(recent_records)
+            
+            timing_bins = list(TransactionTypes.PERIOD_LOOKUP.keys())
 
-        # nonzero_buckets = [ h for h in hist if h > 0 ]
+            # DAILY = 0
+            # WEEKLY = 1
+            # BIWEEKLY = 2
+            # MONTHLY = 3
 
-        dist = [ int(float(f'{n/sum(hist):.2f}')*100) for n in hist ]
+            if len(recent_dates_gaps) == 0:
+                logger.warning(f'no gaps!')
+                return 
+            
+            hist, bins = np.histogram(recent_dates_gaps, bins=timing_bins) #, weights=weights[0:-1])
+            bin = len(hist) - 1
+            while bin > -1:
+                if hist[bin] > 0:
+                    break 
+                bin -= 1
+            
+            period = TransactionTypes.PERIOD_UNKNOWN
+            largest_typical_gap = min(recent_dates_gaps)
 
-        # bucket_count_over_threshold = { 
-        #     t*10: [ b for b in dist if b >= t*10 and b < (t+1)*10 ]
-        #     for t in range(11) }
+            if hist[bin] > 0:
+                largest_typical_gap = max([ g for g in recent_dates_gaps if g >= bins[bin] and g < bins[bin+1] ])
+                period = TransactionTypes.PERIOD_LOOKUP[timing_bins[bin]]
 
-        logger.debug(json.dumps([ datetime.strftime(d, "%Y-%m-%d") for d in recent_records_dates ], indent=2))
-        logger.debug(f'recent_dates_gaps {recent_dates_gaps}')
-        logger.debug(f'hist {hist}')
-        logger.debug(f'bins {bins}')
-        logger.debug(f'dist {dist}')
+            # common_gaps, winning_bin = RecordGrouper._get_values_in_winning_bin(recent_dates_gaps, bins=timing_bins)        
+            # largest_typical_gap = max(common_gaps)
 
-        '''
-        - one record = single
-        - 100% in one bucket = periodic
-        - between 30-50% in each of two buckets separated by at least one bucket, no more than 20% in any other
-            - OR >= 40% in one bucket and no more than 20% in at least one other separated by at least one bucket
-            - OR <= 20% in any bucket
-            - AND at least one every 30 days on average = chaotic frequent
-            - AND less than = chaotic rare
-        '''
+            # TODO: wow this is a PITA
+            first_record = recent_records[0]
+            latest_record = recent_records[-1]
 
-        # if any([ d for d in dist if d >= 90 ]):
+            distinct_accounts = set([ r.uploaded_file.account.id for r in records if r.uploaded_file.account ])
+            distinct_cards = set([ r.uploaded_file.creditcard.id for r in records if r.uploaded_file.creditcard ])
 
-        # logger.debug(json.dumps(bucket_count_over_threshold, indent=2))
+            account_last_dates = [ UploadedFile.objects.filter(account_id=id).order_by('-last_date').first().last_date for id in distinct_accounts ]
+            card_last_dates = [ UploadedFile.objects.filter(creditcard_id=id).order_by('-last_date').first().last_date for id in distinct_cards ]
 
+            all_last_dates = account_last_dates + card_last_dates
+
+            # last_dates = [ r.uploaded_file.last_date for r in records ]
+            last_common_date = min(all_last_dates)
+
+            # last_common_date = datetime.now() 
+
+            is_active = largest_typical_gap > (last_common_date - latest_record.transaction_date).days
+
+            
+
+            # nonzero_buckets = [ h for h in hist if h > 0 ]
+
+            # dist = [ int(float(f'{n/sum(hist):.2f}')*100) for n in hist ]
+
+            # bucket_count_over_threshold = { 
+            #     t*10: [ b for b in dist if b >= t*10 and b < (t+1)*10 ]
+            #     for t in range(11) }
+
+            # print(json.dumps([ datetime.strftime(d, "%Y-%m-%d") for d in recent_records_dates ], indent=2))
+            # print(f'recent_dates_gaps {recent_dates_gaps}')
+            # print(f'hist {hist}')
+            # print(f'bins {bins}')
+            # print(f'dist {dist}')
+
+            '''
+            - one record = single
+            - 100% in one bucket = periodic
+            - between 30-50% in each of two buckets separated by at least one bucket, no more than 20% in any other
+                - OR >= 40% in one bucket and no more than 20% in at least one other separated by at least one bucket
+                - OR <= 20% in any bucket
+                - AND at least one every 30 days on average = chaotic frequent
+                - AND less than = chaotic rare
+            '''
+
+            # if any([ d for d in dist if d >= 90 ]):
+
+            # logger.debug(json.dumps(bucket_count_over_threshold, indent=2))
+
+            stats = {
+                'first_transaction': datetime.strftime(first_record.transaction_date, '%Y-%m-%d'),
+                'last_transaction': datetime.strftime(latest_record.transaction_date, '%Y-%m-%d'),
+                'largest_typical_gap': largest_typical_gap,
+                'last_common_date': datetime.strftime(last_common_date, '%Y-%m-%d'),
+                'last_transaction_date': datetime.strftime(latest_record.transaction_date, '%Y-%m-%d'),
+                'is_active': is_active,
+                'period': period,
+                # 'monthly_spend': amount_split['negative']['monthly_average'],
+                # 'monthly_earn': amount_split['positive']['monthly_average']
+            }
+
+        return stats 
+    
     @staticmethod 
     def get_stats(records):
 
         stats = {
             'record_count': len(records),
             'record_ids': ",".join([ str(r.id) for r in records ]),
-            'description': ''
+            # 'description': ''
         }
 
         # if len(records) == 0:
@@ -464,7 +642,7 @@ class RecordGrouper(object):
                 - date 
         '''
 
-        stats['transaction_type'] = RecordGrouper._guess_transaction_type(records)
+        # stats['transaction_type'] = RecordGrouper._guess_transaction_type(records)
         
         '''
         8/31/2023
@@ -500,15 +678,15 @@ class RecordGrouper(object):
         
         '''
 
-        stats = { **stats, **RecordGrouper._get_timings(records) }
-        stats = { **stats, **RecordGrouper._get_amount_stats(records) }
+        # stats = { **stats, **RecordGrouper._get_timings(records) }
+        # stats = { **stats, **RecordGrouper._get_amount_stats(records) }
 
-        RecordGrouper.get_meaningful_stats(records)
+        stats = { **stats, **RecordGrouper.get_meaningful_stats(records) }
         
         if len(records) > 0:
             descriptions = [ r.description or '' for r in records ]
             description_set = list(set(descriptions))
-            stats['description'] = description_set[np.array([ descriptions.count(d) for d in description_set ]).argmax()]
+            stats['common_description'] = description_set[np.array([ descriptions.count(d) for d in description_set ]).argmax()]
         
         stats['accounts'] = list(set([ str(r.uploaded_file.account) for r in records if r.uploaded_file.account ]))
         stats['creditcards'] = list(set([ str(r.uploaded_file.creditcard) for r in records if r.uploaded_file.creditcard ]))
@@ -536,7 +714,7 @@ class RecordGrouper(object):
 
         '''
 
-        stats_logger.debug(f'Stats returned: {json.dumps(stats, sort_keys=True, indent=2)}')
+        # stats_logger.debug(f'Stats returned: {json.dumps(stats, sort_keys=True, indent=2)}')
         return stats
 
     # @staticmethod
@@ -596,6 +774,7 @@ class RecordGrouper(object):
 
         # -- this is the actual removal of accounted records 
         pared = [ r for r in records if str(r.id) not in rule_index ]
+        removed = [ r for r in records if str(r.id) in rule_index ]
         logger.info(f'Pared {len(records)} records to {len(pared)} by {len(rule_index)} accounted')
 
         '''
@@ -604,7 +783,7 @@ class RecordGrouper(object):
         _less than a priority_, is_accounted should be set to that priority. Future queries 
         can come in with a priority that...
         '''
-        return pared 
+        return pared, removed
 
     @staticmethod 
     def _prototransaction_rule_attempt(match_operator, match_value):
@@ -622,7 +801,21 @@ class RecordGrouper(object):
             match_value = ' '.join(match_value.strip().split(' ')[0:-1]).strip()
             match_operator = TransactionRule.MATCH_OPERATOR_CONTAINS_HUMAN
             is_modified_description = True 
-        
+    
+    @staticmethod 
+    def test_meaningful_stats(transactionruleset_id):
+
+        trs = TransactionRuleSet.objects.get(pk=transactionruleset_id)
+        records = trs.records(refresh=True)
+        records, removed = RecordGrouper.filter_accounted_records(
+            records,
+            less_than_priority=trs.priority,
+            is_auto=trs.is_auto
+        )
+        stats = RecordGrouper.get_meaningful_stats(records)
+        print(f'rule set: {trs.name}')
+        print(json.dumps(stats, sort_keys=True, ensure_ascii=True, indent=4))
+
     @staticmethod
     def group_records(force_regroup_all=False, is_auto=None):
         '''Create and assign RecordGroups for distinct record descriptions'''
@@ -634,19 +827,29 @@ class RecordGrouper(object):
             manual_rule_sets = TransactionRuleSet.objects.filter(is_auto=False).order_by('priority')
             for rule_set in manual_rule_sets:
                 logger.debug(f'recalculating stats for manual rule set {rule_set.name} with priority {rule_set.priority}')
-                records = rule_set.records(refresh=True)
-                records = RecordGrouper.filter_accounted_records(
+                records = rule_set.records(refresh=False)
+                records, removed = RecordGrouper.filter_accounted_records(
                     records, 
                     less_than_priority=rule_set.priority, 
-                    is_auto=False)
+                    is_auto=False
+                )
                 
                 stats = RecordGrouper.get_stats(records)
+                period_days = TransactionTypes.period_reverse_lookup(stats['period'])
+                break_after_misses = math.ceil(period_days / 30)
+                break_after_misses = 3 if break_after_misses < 3 else break_after_misses
+                
+                stats = { **stats, 'monthly': RecordGrouper.get_monthly_stats(rule_set, break_after_misses=break_after_misses) }
                 # stats = { k: stats[k] if stats[k] and stats[k] != "NaN" else 0 for k in stats.keys() }
                 # logger.debug(f'avg amount -- {stats["avg_amount"]}')
                 # logger.debug(f'stats for {rule_set.name}: {json.dumps(stats, indent=4)}')
                 # del stats['avg_amount']
+
+                logger.debug(f'updating rule set {rule_set.id} at priority {rule_set.priority} with stats {stats}')
+
                 proto_transaction = ProtoTransaction.objects.filter(transactionruleset=rule_set).first()
                 if proto_transaction:
+                    proto_transaction.name = rule_set.name
                     proto_transaction.update_stats(stats)
                     proto_transaction.save()
                 else:
@@ -681,7 +884,7 @@ class RecordGrouper(object):
                 # and any records left over can live in multiple auto groups? however if we want to eventually
                 # elevate the auto groups and prototransactions to take part in forecasting/projection, a
                 # single group-per-record must be held everywhere 
-                records = RecordGrouper.filter_accounted_records(records)
+                records, removed = RecordGrouper.filter_accounted_records(records)
 
                 logger.debug(f'True loop {true_loop} -- Using {len(records)} records as as base for description matching')
                 true_loop += 1
@@ -748,7 +951,7 @@ class RecordGrouper(object):
                         logger.debug("\n".join([ str(r) for r in transaction_rule_set.transactionrules.all() ]))
                         
                         records = transaction_rule_set.records(refresh=True)
-                        records = RecordGrouper.filter_accounted_records(records)
+                        records, removed = RecordGrouper.filter_accounted_records(records)
 
                         logger.info(f'Attempting rule {rule_attempt} -> {len(records)} records')
                         logger.debug("\n".join([ str(r) for r in records ]))
@@ -860,9 +1063,16 @@ class RecordGrouper(object):
                 #         #     self.accounts_by_transaction_type[transaction_type] = []
                 #         # self.accounts_by_transaction_type[transaction_type].append(account_entry)
             
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
+    trses = TransactionRuleSet.objects.filter(is_auto=False)
 
+    for trs in trses:
+        print(f'{trs.id}: {trs.name}')
+    
+    trs_id = input('? ')
+
+    RecordGrouper.test_meaningful_stats(trs_id)
 
 
 #     match = sys.argv[1]

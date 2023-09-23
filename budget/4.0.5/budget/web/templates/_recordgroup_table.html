@@ -1,11 +1,11 @@
-<table class="clicky-table" id="record_group_table">
+<table id="record_group_table">
     <tr class="row">
         {% for column in recordgroup_data.record_group_columns|array_split:',' %}
             <th>{{ column }}</th>
         {% endfor %}
     </tr>
     {% for record_group in recordgroup_data.record_groups %}
-    <tr id="recordgroup-{{ forloop.counter0 }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+    <tr id="recordgroup-{{ forloop.counter0 }}">
         {% for column in recordgroup_data.record_group_columns|array_split:',' %}
             <td data-clickyrow="recordgroup-{{ forloop.parentloop.counter0 }}">{{ record_group|lookup:column }}</td>
         {% endfor %}                

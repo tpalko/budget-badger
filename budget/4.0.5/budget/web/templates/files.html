@@ -8,7 +8,7 @@
     <a class="button" href="{% url "reprocess_files" tenant_id=1 %}">Reprocess Files</a>   
 </div>
 
-<table class="clicky-table">
+<table>
     <tr>
         <th>#</th>
         <th>Account</th>
@@ -19,7 +19,7 @@
         <td></td>
     </tr>
     {% for uploadedfile in uploadedfiles %}
-        <tr id="uploadedfile-{{ uploadedfile.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr id="uploadedfile-{{ uploadedfile.id }}">
             <td>{{ uploadedfile.id }}</td>
             <td>{% if uploadedfile.account %}{{ uploadedfile.account }}{% else %}{{ uploadedfile.creditcard }}{% endif %}</td>                
             <td>{{ uploadedfile.original_filename }}</td>

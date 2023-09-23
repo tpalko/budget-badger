@@ -1,8 +1,8 @@
 <div id="record_matcher_results" style="display: none">
     <div id="match_errors"></div>
     <div class="row">
-        <div class="col-16">
-            Ruleset: <span id="ruleset_evaluated"></span>
+        <div class="col-5">            
+            <div id="ruleset_evaluated" style="font-family: monospace"></div>
         </div>        
     </div>
     <div class="row">
@@ -17,7 +17,7 @@
         </div>
         <div id="negative-records" class="col-8">
             <div>
-                <h4>bulk assignment <span class="bulk_record_count"></span></h4>
+                <h4>Bulk Assignment <span class="bulk_record_count"></span></h4>
                 {% include "_record_meta_form.html" %}
             </div>
             <div id="recordstats"></div>            

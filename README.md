@@ -1,5 +1,11 @@
 # Budget Badger 
 
+### 9/22/2023
+
+Questions to answer:
+
+* where is all our money going? can we see meaningful, well defined sums of money over periods in time that we can respond to by understanding what behaviors and actions have an effect on them and planning for changes to those behaviors and actions where applicable, and 
+
 Financial modeling at its finest. 
 
 Two alternate methods of constructing a projection of future spending, budgeting, and financial stability. 

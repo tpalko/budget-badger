@@ -7,7 +7,7 @@ from web.util.modelutil import TransactionTypes
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from web.util.csvparse import get_records_from_csv
-from web.models import UploadedFile, Record, Transaction, RecordFormat, TransactionRuleSet, TransactionRule, ProtoTransaction
+from web.models import Account, CreditCard, UploadedFile, Record, Transaction, RecordFormat, TransactionRuleSet, TransactionRule, ProtoTransaction
 from web.forms import RecordForm, TransactionRuleForm, TransactionRuleSetForm, new_transaction_rule_form_set
 
 from datetime import datetime, timedelta
@@ -251,7 +251,7 @@ def handle_transaction_rule_form_request(request, transactionruleset_id=None):
 def refresh_prototransaction(transactionruleset):
     records = transactionruleset.records(refresh=True)
     
-    records = RecordGrouper.filter_accounted_records(
+    records, removed = RecordGrouper.filter_accounted_records(
         records, 
         less_than_priority=transactionruleset.priority, 
         is_auto=False)
@@ -260,21 +260,129 @@ def refresh_prototransaction(transactionruleset):
 
     proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
     if proto_transaction:
+        proto_transaction.name = transactionruleset.name
         proto_transaction.update_stats(stats)
         proto_transaction.save()
     else:
         proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
     
     return proto_transaction
+
+def accounts_and_cards_for_records(records):
+
+    accounts = [ r.uploaded_file.account for r in records if r.uploaded_file.account ]
+    cards = [ r.uploaded_file.creditcard for r in records if r.uploaded_file.creditcard ]
+
+    return set([ a.id for a in accounts ]), set([ c.id for c in cards ])
+
+def get_type_display_brackets(hold_type_brackets, start_date, last_date):
+    account_coverage = []
+
+    def _get_segment_end_margin(bracket_margin, cursor):
+        end = cursor 
+        if bracket_margin > cursor and bracket_margin < last_date:
+            end = bracket_margin                
+        elif bracket_margin > last_date:
+            end = last_date                 
+        # elif bracket_margin < cursor:
+        #     end = cursor                 
+        return end 
+            
+    for a in hold_type_brackets.keys():
+
+        segments = {
+            'name': hold_type_brackets[a]['name'],
+            'segments': []
+        }
+
+        def _add_segment(cursor, end, class_name):
+            # logger.debug(f'adding {cursor} to {end}')
+            width = end - cursor
+            if width.days > 0:
+                segments['segments'].append({
+                    'class': class_name,
+                    'width': width.days,
+                    'title': f'[{cursor}, {end})'
+                })
         
+        cursor = start_date        
+        
+        for b in hold_type_brackets[a]['brackets']:                
+
+            end = _get_segment_end_margin(b[0], cursor)
+            
+            _add_segment(cursor, end, 'off')
+            
+            cursor = end
+
+            end = _get_segment_end_margin(b[1], cursor)
+
+            _add_segment(cursor, end, 'on')
+            
+            cursor = end 
+
+            if cursor >= last_date:
+                break 
+        
+        if last_date > cursor:
+            _add_segment(cursor, last_date, 'off')
+            
+        account_coverage.append(segments)
+
+
+    return account_coverage 
+
+def generate_display_brackets(account_brackets, card_brackets, start_date, end_date):
+
+    brackets = []
+
+    brackets.extend(get_type_display_brackets(account_brackets, start_date, end_date))
+    brackets.extend(get_type_display_brackets(card_brackets, start_date, end_date))
+    
+    return brackets 
+
+def coverage_brackets():
+
+    accounts = Account.objects.all() # [ r.uploaded_file.account for r in records if r.uploaded_file.account ]
+    cards = CreditCard.objects.all() # [ r.uploaded_file.creditcard for r in records if r.uploaded_file.creditcard ]
+
+    return { 
+        n.id: { 
+            'name': n.name, 
+            'brackets': n.continuous_record_brackets() 
+        } for n in accounts 
+    }, { 
+        n.id: { 
+            'name': n.name, 
+            'brackets': n.continuous_record_brackets() 
+        } for n in cards 
+    }
+
+def get_ruleset_breakout(transactionrulesets_manual):
+
+    credit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.monthly_earn is not None and rs.prototransaction.monthly_spend is not None and abs(rs.prototransaction.monthly_earn) > abs(rs.prototransaction.monthly_spend) ]
+    debit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.monthly_earn is not None and rs.prototransaction.monthly_spend is not None and abs(rs.prototransaction.monthly_earn) < abs(rs.prototransaction.monthly_spend) ]
+    nostat_rulesets = [ rs for rs in transactionrulesets_manual if rs.id not in [ r.id for r in credit_rulesets ] and rs.id not in [ r.id for r in debit_rulesets ] ]
+
+    return {
+        'credit_stats': ruleset_stats(credit_rulesets),
+        'credit_rulesets': sorted(credit_rulesets, key=lambda t: t.priority, reverse=False),
+        'debit_stats': ruleset_stats(debit_rulesets),
+        'debit_rulesets': sorted(debit_rulesets, key=lambda t: t.priority, reverse=False),        
+        'nostat_rulesets': sorted(nostat_rulesets, key=lambda t: t.priority, reverse=False),    
+    }
+
 def ruleset_stats(rulesets):
     
-    total_amount = sum([ transactionruleset.prototransaction_safe().stats['monthly_amount'] for transactionruleset in rulesets if transactionruleset.prototransaction_safe() ])
-    total_records = sum([ len(transactionruleset.records(refresh=True)) for transactionruleset in rulesets ])
+    total_earn = sum([ transactionruleset.prototransaction_safe().monthly_earn or 0 for transactionruleset in rulesets if transactionruleset.prototransaction_safe() and transactionruleset.prototransaction.is_active ])
+    total_spend = sum([ transactionruleset.prototransaction_safe().monthly_spend or 0 for transactionruleset in rulesets if transactionruleset.prototransaction_safe() and transactionruleset.prototransaction.is_active ])
+    total_records = sum([ len(transactionruleset.records(refresh=True)) for transactionruleset in rulesets if transactionruleset.prototransaction_safe() and transactionruleset.prototransaction.is_active ])
 
     return {
         'totals': {
-            'amount': total_amount,
+            'earn': total_earn,
+            'spend': total_spend,
+            'total': total_earn + total_spend,
             'records': total_records
         }
     }    

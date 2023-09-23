@@ -1,12 +1,27 @@
 from django import template
 from django.utils.safestring import mark_safe
-from web.models import RecurringTransaction
+from web.models import Record 
 from datetime import datetime 
 import logging
 
 logger = logging.getLogger(__name__)
 
 register = template.Library()
+
+@register.filter()
+def mult(a, b):
+	return a*b
+
+@register.filter()
+def sum_numbers(numbers):
+	return sum(numbers)
+
+@register.filter()
+def meta_to_record(recordmetas):
+	records = []
+	for m in recordmetas:
+		records.append(Record.objects.filter(core_fields_hash=m.core_fields_hash).first())
+	return records
 
 @register.filter()
 def gt(than, num):
@@ -46,7 +61,9 @@ def lookup(obj, key):
 	# logger.debug(f'looking up {key} in object')
 	val = None 
 	try:
-		if type(obj) == dict:			
+		if type(obj) == list:
+			val = [ o.__getattribute__(str(key)) for o in obj ]
+		elif type(obj) == dict:			
 			val = obj[str(key)]
 			# val = obj.__getattribute__(str(key))
 		else:			

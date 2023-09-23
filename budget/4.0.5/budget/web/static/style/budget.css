@@ -1,6 +1,6 @@
 body {
 	font-family: Arial, Helvetica, sans-serif;	
-	font-size: 18px;
+	/* font-size: 0.8em; */
 	margin-bottom: 28px;
 	margin: 0;
 	padding: 0;
@@ -33,6 +33,7 @@ body.dark {
 
 .header {
 	background-color: #006600;
+	color: #ffffff;
 	position: fixed;
 	width: 100%;
 	height: 77px;
@@ -68,6 +69,10 @@ body.dark #tabs > div.selected {
 	color: #333333;
 }
 
+.clicky-table {
+	font-size: 0.7em;
+}
+
 .record_matcher_result {
 	background-color: #99ff99;
 }
@@ -90,7 +95,7 @@ ul.tabs > li {
 
 ul.menu > li {
 	width: 130px;
-	font-size: 0.7em;
+	font-size: 0.8em;
 	height: 30px;		
 }
 
@@ -117,11 +122,11 @@ form div {
 }
 
 form label {
-	font-size: 1.2em;
+	/* font-size: 1.2em; */
 }
 
 input, select{
-	font-size: 1.2em;
+	/* font-size: 1.2em; */
 }
 
 input[type='file'] {
@@ -130,7 +135,7 @@ input[type='file'] {
 
 table {
     font-weight: 100;
-    font-size: 0.9em;
+    /* font-size: 0.9em; */
 }
 
 table#record_group_table {
@@ -163,13 +168,53 @@ table tr td table tr:nth-child(odd) {
 	font-weight: bold;
 }
 
+tr:nth-child(even) td.prototransaction-field {
+	background-color: #6666cc;
+	color: white;
+}
+
+tr:nth-child(odd) td.prototransaction-field {
+	background-color: #9999ff;
+	color: white;
+}
+
+div.coverage_brackets span.name {
+	display: inline-block;
+	width: 200px;
+}
+
+div.coverage_brackets span {
+	display: inline-block;
+	height: 10px;
+}
+
+div.coverage_brackets span.on {	
+	background-color: green;
+}
+
+div.coverage_brackets span.off {
+	background-color: red;
+}
+
+tr.ruleset-status-active {
+
+}
+
+tr.ruleset-status-inactive {
+	background-color: #cccccc !important;
+}
+
+tr.ruleset-status-unknown {
+	background-color: #ffffff !important;
+}
+
 #record_matcher_results {
-	font-size: 0.8em;
+	/* font-size: 0.8em; */
 }
 
 form.record_meta,
 form#ruleform {
-	font-size: 0.7em;
+	/* font-size: 0.7em; */
 }
 
 form.record_meta input[type='text'] {
@@ -188,16 +233,6 @@ div.transactionruleset_form div {
 
 div.transactionruleset_form input[name='priority'] {
 	width: 50px;
-}
-
-tr.even td.prototransaction-field {
-	background-color: #6666cc;
-	color: white;
-}
-
-tr.odd td.prototransaction-field {
-	background-color: #9999ff;
-	color: white;
 }
 
 div.accounting-table table tr{

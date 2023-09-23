@@ -2,7 +2,7 @@
 
 <h3>Matched Records {{ records|length }}</h3>
 <div class="record_matcher_result" style="max-height: 500px;overflow-y:scroll;">
-    <table style="width: 100%;">
+    <table>
         <tr>
             <th>id</th>
             <th>date</th>
@@ -12,11 +12,11 @@
             <th></th>
         </tr>
         {% for record in records %} 
-            <tr title="{{ record.extra_fields }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <tr title="{{ record.extra_fields }}">
                 <td>{{ record.id }}</td>
                 <td>{{ record.transaction_date }}</td>
                 <td>{{ record.uploaded_file.account_name }}</td>
-                <td>{{ record.full_description }}</td>
+                <td>{{ record.full_description }}<br />#{{ record.extra_fields.ref }}</td>
                 <td>{{ record.amount }}</td>                
                 <td>
                     {% include "_record_meta_form.html" with selected_record=record %}                    

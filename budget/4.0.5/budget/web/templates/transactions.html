@@ -25,7 +25,7 @@
 		<th></th>
 	</tr>
 {% for r in income_transactions %}
-	<tr id="transaction-{{ r.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+	<tr id="transaction-{{ r.id }}">
 		<td>{{ r.name }}</td>
 		<td>{{ r.account }}</td>
 		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
@@ -57,7 +57,7 @@
 		<th></th>
 	</tr>
 {% for r in debt_transactions %}
-	<tr id="transaction-{{ r.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+	<tr id="transaction-{{ r.id }}">
 		<td>{{ r.name }}</td>
 		<td>{{ r.account }}</td>
 		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
@@ -89,7 +89,7 @@
 		<th></th>
 	</tr>
 {% for r in utility_transactions %}
-	<tr id="transaction-{{ r.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+	<tr id="transaction-{{ r.id }}">
 		<td>{{ r.name }}</td>
 		<td>{{ r.account }}</td>
 		<td>{{ r.amount|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
@@ -122,7 +122,7 @@
 		<th></th>-3375.00
 	</tr>
 {% for r in creditcard_transactions %}
-	<tr id="transaction-{{ r.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+	<tr id="transaction-{{ r.id }}">
 		<td>{{ r.name }}</td>
 		<td>{{ r.account }}</td>
 		<td>{{ r.creditcardtransaction.expense_total|dec_out }} {% if r.is_variable %}*{% endif %} {{ r|monthly_amount|dec_out }}</td>
@@ -152,7 +152,7 @@
 		<th></th>
 	</tr>
 {% for r in single_transactions %}
-	<tr id="transaction-{{ r.id }}" class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+	<tr id="transaction-{{ r.id }}">
 		<td>{{ r.name }}</td>
 		<td>{{ r.amount|dec_out }}</td>
 		<td>{{ r.transaction_at|date }}</td>

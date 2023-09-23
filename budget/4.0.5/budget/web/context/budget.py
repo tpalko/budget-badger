@@ -7,7 +7,7 @@ from django.urls import resolve, reverse
 from django.db.models import Q
 
 from web.util.viewutil import get_querystring
-from web.models import RecordMeta, TransactionRuleSet
+from web.models import Event, RecordMeta, TransactionRuleSet
 
 def format_url(view_name, kwargs={}):
     kwargs.update({'tenant_id': 1})
@@ -50,9 +50,13 @@ def budget_context(request_context):
             'display': 'Rules'
         },        
         { 
-            'url': format_url('transactionrulesets_auto'),
-            'display': 'Auto Groups'
-        },
+            'url': format_url('alignment'),
+            'display': 'Alignment'
+        },        
+        # { 
+        #     'url': format_url('transactionrulesets_auto'),
+        #     'display': 'Auto Groups'
+        # },
         { 
             'url': format_url('transactions'),
             'display': 'Transactions'
@@ -71,5 +75,6 @@ def budget_context(request_context):
         'debug': debug,
         'menu': menu,
         'record_types': RecordMeta.RECORD_TYPES,
-        'join_operators': TransactionRuleSet.join_operator_choices
+        'join_operators': TransactionRuleSet.join_operator_choices,
+        'events': Event.objects.all()
     }

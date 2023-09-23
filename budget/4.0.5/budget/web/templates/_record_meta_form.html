@@ -6,5 +6,11 @@
             <option value="{{ k }}" {% if k == selected_record.meta_record_type %}selected{% endif %}>{{ k }}</option>
         {% endfor %}
     </select>
+    <select name="event_id">
+        <option value="">- no event -</option>
+        {% for e in events %}
+            <option value="{{ e.id }}" {% if e.id == selected_record.meta_event_id %}selected{% endif %}>{{ e.name }}</option>
+        {% endfor %}
+    </select>
     <input type="submit" />
 </form>

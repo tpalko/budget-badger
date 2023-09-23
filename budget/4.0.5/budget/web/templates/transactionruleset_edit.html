@@ -11,7 +11,7 @@
 </div>
 
 <div class="row">
-    <div class="col-5">
+    <div class="col-16">
 
     {% if transactionruleset_form.id.value %} 
         <form id="ruleform" method="POST" action="{% url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset_form.id.value %}">

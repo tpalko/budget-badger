@@ -21,7 +21,7 @@ urlpatterns = [
     path(r'', views.home, name="home"),
     #path(r'^transaction/', views.transaction_new, name="transaction_new"),    
     re_path(r'account/(?P<tenant_id>[0-9]+)/settings/', views.settings, name="settings"),
-    
+    re_path(r'account/(?P<tenant_id>[0-9]+)/event/(?P<event_id>[0-9]+)/manage', views.event_manage, name="event_manage"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/select_tag/', views.select_tag, name="select_tag"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/get_transaction_rule_forms/(?P<transactionruleset_id>[0-9]+)', views.get_transaction_rule_forms, name="get_transaction_rule_forms"),
     # re_path(r'account/(?P<tenant_id>[0-9]+)/recordmatcher/(?P<transactionruleset_id>[0-9]+)/', views.recordmatcher, name="recordmatcher"),
@@ -37,6 +37,7 @@ urlpatterns = [
     # re_path(r'account/(?P<tenant_id>[0-9]+)/rulematches/', views.rulematches, name="rulematches"),
     # re_path(r'account/(?P<tenant_id>[0-9]+)/model/(?P<model_id>[0-9]+)/', views.model_edit, name="model_edit"),    
     # re_path(r'account/(?P<tenant_id>[0-9]+)/model/', views.model_edit, name="model_edit"),
+    re_path(r'account/(?P<tenant_id>[0-9]+)/alignment/', views.alignment, name="alignment"),    
     re_path(r'account/(?P<tenant_id>[0-9]+)/tracing/', views.tracing, name="tracing"),    
     # re_path(r'account/(?P<tenant_id>[0-9]+)/tracing/', views.tracing, name="tracing"),
     re_path(r'account/(?P<tenant_id>[0-9]+)/models/', views.model_list, name="model_list"),    

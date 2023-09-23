@@ -23,10 +23,12 @@ def tokenize_records(records):
     log_totals = np.log(totals)
     
     # logger.debug(sorted_token)
-    log_amounts = [ n/max(log_totals.tolist()) for n in log_totals.tolist() ]
+    log_amounts = [ (n/max(log_totals.tolist()))+0.2 for n in log_totals.tolist() ]
 
     for i, d in enumerate(tokens):
         d['log_norm_amt'] = log_amounts[i]
+    
+    tokens.sort(key=lambda t: t['log_norm_amt'], reverse=True)
 
     # log_list = [ (n)/max(np.log(a).tolist()) for n in np.log(a).tolist() ]
 

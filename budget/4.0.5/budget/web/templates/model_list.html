@@ -19,7 +19,7 @@
             </tr>
     {% for recordformat in recordformats %}
 
-        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr>
             <td>{{ recordformat.name }}</td>
             <td title="{{ recordformat.csv_columns }}">{{ recordformat.csv_columns|truncatechars:100 }}</td>
             <td>{{ recordformat.flow_convention }}</td>
@@ -55,7 +55,7 @@
                 <th></th>
             </tr>        
         {% for account in accounts %}
-            <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+            <tr>
                 <td>{{ account.name }}</td>
                 <td>{{ account.account_number }}</td>
                 <td>{{ account.recordformat }}</td>
@@ -91,11 +91,13 @@
                 <th>Due Date</th>
                 <th>Files</th>
                 <th>Records</th>
+                <th>Start</th>
+                <th>End</th>
                 <th></th>
             </tr>
     {% for creditcard in creditcards %}
 
-        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr>
             <td>{{ creditcard.name }}</td>
             <td>{{ creditcard.recordformat }}</td>
             <td>{{ creditcard.account_number }}</td>
@@ -104,6 +106,8 @@
             <td>{{ creditcard.cycle_due_date }}</td>        
             <td>{{ creditcard.uploadedfiles.all|length }}</td>    
             <td>{{ creditcard.records.all|length }}</td>
+            <td>{{ creditcard.continuous_record_brackets.0.0 }}</td>
+            <td>{{ creditcard.continuous_record_brackets.0.1 }} ({{ creditcard.continuous_record_brackets|length }})</td>
             <td>
                 <a href="{% url "model_edit" model_name="creditcard" tenant_id=1 model_id=creditcard.id %}">edit</a>
                 <a href="{% url "model_edit" model_name="creditcard" tenant_id=1 model_id=creditcard.id %}" class="delete">delete</a>
@@ -128,7 +132,7 @@
             </tr>
     {% for property in properties %}
 
-        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr>
             <td>{{ property.name }}</td>            
             <td>{{ property.address }}</td>
             <td>
@@ -157,7 +161,7 @@
             </tr>
     {% for vehicle in vehicles %}
 
-        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr>
             <td>{{ vehicle.name }}</td>            
             <td>{{ vehicle.make }}</td>            
             <td>{{ vehicle.model }}</td>            
@@ -183,15 +187,20 @@
                 <th>Name</th>                
                 <th>Started</th>
                 <th>Ended</th>
+                <th>Records</th>
+                <th>Total</th>
                 <th></th>
             </tr>
     {% for event in events %}
 
-        <tr class="{% if forloop.counter0|mod:2 == 0 %}even{% else %}odd{% endif %}">
+        <tr>
             <td>{{ event.name }}</td>         
             <td>{{ event.started_at }}</td>   
             <td>{{ event.ended_at }}</td>
+            <td>{{ event.recordmetas.all|length }}</td>
+            <td>${{ event.recordmetas.all|meta_to_record|lookup:"amount"|sum_numbers|format_currency }}</td>
             <td>
+                <a href="{% url "event_manage" tenant_id=1 event_id=event.id %}">manage</a>
                 <a href="{% url "model_edit" model_name="event" tenant_id=1 model_id=event.id %}">edit</a>
                 <a href="{% url "model_edit" model_name="event" tenant_id=1 model_id=event.id %}" class="delete">delete</a>
             </td>

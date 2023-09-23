@@ -18,7 +18,7 @@ from web.util.viewutil import get_heatmap_data, get_records_template_data, trans
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
-from web.util.viewutil import Searches, SEARCH_QUERIES, SEARCH_OPTIONS, fuzzy_comparator, cleanup_file, process_file, refresh_prototransaction, handle_transaction_rule_form_request, process_transaction_rule_forms, init_transaction_rule_forms, alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
+from web.util.viewutil import Searches, SEARCH_QUERIES, SEARCH_OPTIONS, generate_display_brackets, coverage_brackets, get_ruleset_breakout, fuzzy_comparator, cleanup_file, process_file, refresh_prototransaction, handle_transaction_rule_form_request, process_transaction_rule_forms, init_transaction_rule_forms, alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 from web.util.ruleindex import get_record_rule_index
 from web.util.tokens import tokenize_records
 # from web.util.cache import cache_fetch, cache_fetch_objects, cache_store
@@ -47,7 +47,7 @@ def model_list(request, tenant_id):
     recordformats = RecordFormat.objects.all()
     properties = Property.objects.all()
     vehicles = Vehicle.objects.all()
-    events = Event.objects.all()
+    events = Event.objects.all().order_by('started_at')
 
     context = {
         'accounts': accounts, 
@@ -116,6 +116,14 @@ def model_edit(request, tenant_id, model_name, model_id=None):
     
     return render(request, f'model_edit.html', {'form': form, 'model_name': model_map[model_name]['model'].__name__})
 
+def event_manage(request, tenant_id, event_id):
+
+    event = Event.objects.get(pk=event_id)
+
+    records = Record.objects.filter(transaction_date__gte=event.started_at, transaction_date__lt=event.ended_at + timedelta(days=2)).order_by('-transaction_date')
+
+    return render(request, 'event.html', { 'event': event, 'records': records })
+
 def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     
     message = ""
@@ -123,9 +131,9 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     try:
         transactionrulesets_manual = TransactionRuleSet.objects.filter(is_auto=False)
 
-        credit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.stats['monthly_amount'] > 0 ]
-        debit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.stats['monthly_amount'] < 0 ]
-        nostat_rulesets = [ rs for rs in transactionrulesets_manual if not rs.prototransaction_safe() ]
+        # credit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.monthly_earn is not None and rs.prototransaction.monthly_spend is not None and abs(rs.prototransaction.monthly_earn) > abs(rs.prototransaction.monthly_spend) ]
+        # debit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.monthly_earn is not None and rs.prototransaction.monthly_spend is not None and abs(rs.prototransaction.monthly_earn) < abs(rs.prototransaction.monthly_spend) ]
+        # nostat_rulesets = [ rs for rs in transactionrulesets_manual if rs.id not in [ r.id for r in credit_rulesets ] and rs.id not in [ r.id for r in debit_rulesets ] ]
 
     except:
         logger.error(sys.exc_info()[0])
@@ -134,13 +142,9 @@ def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
         traceback.print_tb(sys.exc_info()[2])
 
     template_data = {
-        'manual_stats': ruleset_stats(transactionrulesets_manual),
         'transactionrulesets_manual': sorted(transactionrulesets_manual, key=lambda t: t.priority, reverse=False),
-        'credit_stats': ruleset_stats(credit_rulesets),
-        'credit_rulesets': sorted(credit_rulesets, key=lambda t: t.priority, reverse=False),
-        'debit_stats': ruleset_stats(debit_rulesets),
-        'debit_rulesets': sorted(debit_rulesets, key=lambda t: t.priority, reverse=False),        
-        'nostat_rulesets': sorted(nostat_rulesets, key=lambda t: t.priority, reverse=False),
+        # 'manual_stats': ruleset_stats(transactionrulesets_manual),        
+        **get_ruleset_breakout(transactionrulesets_manual),
         'message': message        
     }
 
@@ -236,19 +240,20 @@ def recordmatcher(request, tenant_id):
                 response['data'][key] = {}
                 recordset = split_recordsets[key]['records']
 
-                pared_recordset = RecordGrouper.filter_accounted_records(recordset, less_than_priority=priority, is_auto=False)
+                pared_recordset, removed = RecordGrouper.filter_accounted_records(recordset, less_than_priority=priority, is_auto=False)
 
                 pared_record_count = len(pared_recordset)
 
                 shared_context = {
                     'total_record_count': pared_record_count,
-                    'accounted_records_removed': len(recordset) - pared_record_count,
+                    'accounted_records_removed': removed,
                     # 'unaccounted_record_count': len(unaccounted_record_ids),
                     **get_records_template_data(pared_recordset),
                     'heatmap_data': get_heatmap_data(pared_recordset),
                     'records': pared_recordset,
                     'record_types': RecordMeta.RECORD_TYPES,
-                    'join_operators': TransactionRuleSet.join_operator_choices
+                    'join_operators': TransactionRuleSet.join_operator_choices,
+                    'events': Event.objects.all()
 
                 }
 
@@ -290,16 +295,22 @@ def sorter(request, tenant_id):
         return redirect("sorter", tenant_id=tenant_id)
     
     transactionrulesets = TransactionRuleSet.objects.filter(is_auto=False)
-    records = RecordGrouper.filter_accounted_records(
+    records, removed = RecordGrouper.filter_accounted_records(
         Record.budgeting.order_by('amount'), 
         is_auto=False
     )
     tokens = tokenize_records(records)
     sorter_form = SorterForm()
 
+    total_credit, count_credit, total_debit, count_debit = RecordGrouper.record_magnitude_split(records)
+
     stats = {
-        'abs_total': sum([ abs(r.amount) for r in records ]),
-        'count': len(records)
+        'total_credit': total_credit,
+        'total_debit': total_debit,
+        'total': total_credit + total_debit, 
+        'count_credit': count_credit,
+        'count_debit': count_debit,
+        'count': count_credit + count_debit
     }
 
     context = {
@@ -312,6 +323,68 @@ def sorter(request, tenant_id):
     }
 
     return render(request, "sorter.html", context) 
+
+def alignment(request, tenant_id):
+
+    misses = 0 
+    monthly_records = {}
+
+    account_brackets, card_brackets = coverage_brackets()
+
+    for month_start, month_end in RecordGrouper.months():    
+
+        brackets = generate_display_brackets(account_brackets, card_brackets, month_start.date(), month_end.date())
+
+        # logger.debug(f'finding records between {month_start} and {month_end}')
+        month_records = Record.budgeting.filter(transaction_date__gte=month_start, transaction_date__lt=month_end).order_by('transaction_date')
+        
+        if len(month_records) == 0:
+            misses += 1
+
+        unaccounted_records, accounted_records = RecordGrouper.filter_accounted_records(month_records, is_auto=False, refresh_cache=False)
+
+        total = RecordGrouper.record_magnitude(month_records)
+        total_credit, count_credit, total_debit, count_debit = RecordGrouper.record_magnitude_split(month_records)
+        
+        # credit_records, debit_records = record_split(month_records)
+        
+        total_accounted = RecordGrouper.record_magnitude(accounted_records)
+        total_unaccounted = RecordGrouper.record_magnitude(unaccounted_records)
+        unaccounted_total_credit, unaccounted_count_credit, unaccounted_total_debit, unaccounted_count_debit = RecordGrouper.record_magnitude_split(unaccounted_records)
+        # accounted_total_credit, accounted_count_credit, accounted_total_debit, accounted_count_debit = record_magnitude_split(accounted_records)
+
+        month_start_key = datetime.strftime(month_start, "%Y-%m")
+        monthly_records[month_start_key] = {
+            'records': month_records,
+            'total_count': len(month_records),
+            'accounted': len(accounted_records),
+            'accounted_percent': f'{100*total_accounted / total if total > 0 else 0:.1f}%',
+            'unaccounted_percent': f'{100*total_unaccounted / total if total > 0 else 0:.1f}%' + f' ({len(unaccounted_records)})',
+            'unaccounted_credit_amount_percent': f'{100*unaccounted_total_credit / total_unaccounted if total_unaccounted > 0 else 0:.1f}%' + f' ({unaccounted_count_credit})',
+            'unaccounted_debit_amount_percent': f'{100*unaccounted_total_debit / total_unaccounted if total_unaccounted > 0 else 0:.1f}%' + f' ({unaccounted_count_debit})',
+            'expense': -total_debit,
+            'earn': total_credit,
+            'total': total_credit - total_debit,
+            'brackets': brackets,
+        }
+
+        if misses >= 3:
+            break 
+    
+    transactionrulesets_manual = TransactionRuleSet.objects.filter(is_auto=False)
+    breakout = get_ruleset_breakout(transactionrulesets_manual)
+
+    credit_total = breakout['credit_stats']['totals']['total']
+    debit_total = breakout['debit_stats']['totals']['total']
+
+    context = {
+        'monthly_records': monthly_records,
+        'credit_total': credit_total,
+        'debit_total': debit_total,
+        'total': credit_total + debit_total
+    }
+
+    return render(request, 'alignment.html', context)
 
 def get_transaction_rule_forms(request, tenant_id, transactionruleset_id):
 
@@ -443,7 +516,7 @@ def transactionruleset_edit_OLD(request, tenant_id, transactionruleset_id=None, 
                 transactionruleset.refresh_from_db()
 
                 records = transactionruleset.records(refresh=True)
-                records = RecordGrouper.filter_accounted_records(
+                records, removed = RecordGrouper.filter_accounted_records(
                     records, 
                     less_than_priority=transactionruleset.priority, 
                     is_auto=False)
@@ -452,6 +525,7 @@ def transactionruleset_edit_OLD(request, tenant_id, transactionruleset_id=None, 
 
                 proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
                 if proto_transaction:
+                    proto_transaction.name = transactionruleset.name
                     proto_transaction.update_stats(stats)
                     proto_transaction.save()
                 else:
@@ -652,12 +726,14 @@ def update_record_meta(request, tenant_id):
             
             response['data']['original_record_type'] = record_meta.record_type 
             response['data']['original_description'] = record_meta.description 
+            response['data']['original_event_id'] = record_meta.event_id
 
             assoc_record = None 
             assoc_record_meta = None 
 
             record_type = request.POST['record_type']
             description = request.POST['description']
+            event_id = request.POST['event_id']
 
             # -- always grab the associated record from the form
             # -- though it's only used when setting type as internal 
@@ -675,15 +751,16 @@ def update_record_meta(request, tenant_id):
             if record_meta:   
                 record_meta.record_type = record_type
                 record_meta.description = description 
+                record_meta.event_id = event_id
                 record_meta.save()
 
             if assoc_record_meta and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
                 assoc_record_meta.record_type = record_type 
                 assoc_record_meta.save()
 
-                response['messages'].append(f'Records {record.id} and {assoc_record.id} (meta {record_meta.id}, {assoc_record_meta.id}) type updated to {record_type}, {record.id} updated description to {description}')
+                response['messages'].append(f'Records {record.id} and {assoc_record.id} (meta {record_meta.id}, {assoc_record_meta.id}) type updated to {record_type}, {record.id} updated description to {description}, event to {event_id}')
             else:
-                response['messages'].append(f'Record {record.id} meta ({record_meta.id}) updated to {record_type} / {description}')
+                response['messages'].append(f'Record {record.id} meta ({record_meta.id}) updated to {record_type} / {description} / event {event_id}')
             
         response['success'] = True 
                 
@@ -856,7 +933,7 @@ def records(request, tenant_id):
         if hide_accounted:
             c['records'] = [ r for r in c['records'] if str(r.id) not in record_rules ]
     
-    show_record_columns = ['id', 'transaction_date', 'description', 'amount', 'extra_fields', 'type']
+    show_record_columns = ['id', 'transaction_date', 'meta_record_type', 'description', 'amount', 'extra_fields']
     
     template_data = {
         'hide_accounted': hide_accounted,
@@ -865,7 +942,7 @@ def records(request, tenant_id):
         'records_by_account': records_by_account,
         'records_by_creditcard': records_by_creditcard,
         'record_sort': record_sort,                
-        'record_columns': [ r.name for r in Record._meta.fields if len(show_record_columns) == 0 or r.name in show_record_columns ]
+        'record_columns': show_record_columns # [ r.name for r in Record._meta.fields if len(show_record_columns) == 0 or r.name in show_record_columns ]
     }
 
     return render(request, "records.html", template_data)
@@ -953,6 +1030,14 @@ def files(request, tenant_id):
     }
 
     return render(request, "files.html", template_data)
+
+def coverage(request, tenant_id):
+
+    accounts = Account.objects.all()
+
+    for f in accounts.uploaded_files:
+        pass 
+
 
 def select_tag(request, tenant_id):
 

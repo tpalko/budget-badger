@@ -77,7 +77,7 @@ function addErrorMessage(message) {
 		if (document.querySelectorAll("ul.messages li").length == 0) { 
 			document.querySelector("ul.messages").style.display = 'none'; 
 		} 
-	}, 10000);	
+	}, 5000);	
 }
 
 function initTabs() {

@@ -44,6 +44,40 @@ class RecordFormat(BaseModel):
     def __str__(self):
         return f'{self.name}'
 
+def _continuous_record_brackets(ordered_uploaded_files):
+
+    brackets = []
+    # start = None 
+    # end = None 
+    margin = timedelta(days=6)
+
+    for uploadedfile in ordered_uploaded_files:
+        handled = False 
+        for bracket in brackets:
+            # -- this file starts after the bracket start, ends after the bracket end
+            # -- could be overlapping, or not 
+            if uploadedfile.first_date > bracket[0] and uploadedfile.last_date > bracket[1]:
+
+                # -- overlapping the bracket (at least by margin)
+                if uploadedfile.first_date - margin < bracket[1]:
+                    # -- extends this bracket
+                    bracket[1] = uploadedfile.last_date
+                    handled = True 
+                    break 
+                
+            if uploadedfile.first_date > bracket[0] and uploadedfile.last_date < bracket[1]:
+                # -- contained by this bracket, do nothing
+                handled = True 
+                break                                 
+            
+        if not handled:
+            brackets.append([uploadedfile.first_date, uploadedfile.last_date])
+        
+    # if start and end:
+    #     brackets.append((start, end,))
+
+    return brackets 
+
 class Account(BaseModel):
 
     recordformat = models.ForeignKey(RecordFormat, related_name='accounts', on_delete=models.RESTRICT, null=True)
@@ -60,35 +94,7 @@ class Account(BaseModel):
     #     return self.records.filter(transaction__isnull=False)
     
     def continuous_record_brackets(self):
-
-        brackets = []
-        start = None 
-        end = None 
-        margin = timedelta(days=5)
-
-        for uploadedfile in self.uploadedfiles.all().order_by('first_date'):
-            handled = False 
-            for bracket in brackets:
-                # -- this file starts within this bracket and ends past it (extends the bracket)
-                if uploadedfile.first_date > bracket[0] and uploadedfile.last_date > bracket[1]:
-
-                    if uploadedfile.first_date - margin < bracket[1]:
-                        # -- extends this bracket
-                        bracket[1] = uploadedfile.last_date
-                        handled = True 
-                        break 
-                    
-                if uploadedfile.first_date > bracket[0] and uploadedfile.last_date < bracket[1]:
-                    # -- contained by this bracket, do nothing
-                    handled = True 
-                    break                                 
-                
-            if not handled:
-                brackets.append([uploadedfile.first_date, uploadedfile.last_date])
-            
-        if start and end:
-            brackets.append((start, end,))
-        return brackets 
+        return _continuous_record_brackets(self.uploadedfiles.all().order_by('first_date'))
         
 class CreditCard(BaseModel):
 
@@ -105,6 +111,9 @@ class CreditCard(BaseModel):
     def accounted_records(self):
         return self.records.filter(creditcardexpense__isnull=False)
 
+    def continuous_record_brackets(self):
+        return _continuous_record_brackets(self.uploadedfiles.all().order_by('first_date'))
+    
 class UploadedFile(BaseModel):
 
     recordformat = None 
@@ -172,7 +181,7 @@ def records_from_rules(rule_logics, join_operator):
         else:
             this_qs.append(logic.key_arg_dict())
 
-    logger.debug(f'Q dicts: {this_qs}')
+    # logger.debug(f'Q dicts: {this_qs}')
 
     for i, qdict in enumerate(this_qs):
         q = Q(**qdict)
@@ -186,7 +195,7 @@ def records_from_rules(rule_logics, join_operator):
 
     qs = Record.budgeting.filter(qset).order_by('-transaction_date')
 
-    return list(qs)
+    return qs
 
 class TransactionRuleSet(BaseModel):
     '''A general filter for records'''
@@ -341,12 +350,24 @@ class ProtoTransaction(BaseModel):
 
     transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)        
     name = models.CharField(max_length=200, unique=True)
-    tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
-    transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
-    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
-    timing = models.CharField(max_length=20, choices=TransactionTypes.timing_choices, default=TransactionTypes.TRANSACTION_TIMING_SINGLE)
-    recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    
+    # -- emitted from stats
     is_active = models.BooleanField(null=False, default=True)
+
+    # -- 
+    # -- tax_category to categorize expenses for tax purposes
+    tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
+    # -- we can guess at this
+    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
+    monthly_spend = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    monthly_earn = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+
+    # -- probably trash transaction_type
+    transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
+    timing = models.CharField(max_length=20, choices=TransactionTypes.timing_choices, default=TransactionTypes.TRANSACTION_TIMING_SINGLE)
+    # -- recurring_amount means little, very few expenses repeat to the penny, and the fact that they do is insignificant
+    recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+        
     stats = models.JSONField(null=True)
     
     def cross_account(self):
@@ -382,12 +403,21 @@ class ProtoTransaction(BaseModel):
 
     '''
     def update_stats(self, stats):
-        fields = [ f.name for f in ProtoTransaction._meta.fields ]
+        '''
+        Updates all common fields between given stats dict and the ProtoTransaction object 
+        and puts everything else (not excluded by ProtoTransaction.EXCLUDE_STAT_FIELDS) into ProtoTransaction.stats
+        '''
+        fields = [ f.name for f in ProtoTransaction._meta.fields ]        
         self.stats = { s: stats[s] for s in stats if s not in fields and s not in ProtoTransaction.EXCLUDE_STAT_FIELDS }
+        for stat_field in [ s for s in stats.keys() if s in fields ]:
+            self.__setattr__(stat_field, stats[stat_field])
 
     @staticmethod
     def new_from(name, stats, transaction_rule_set):
-        
+        '''
+        Creates a new ProtoTransaction with given name, populating all common fields between given stats dict and the ProtoTransaction model
+        and putting everything else (not excluded by ProtoTransaction.EXCLUDE_STAT_FIELDS) into ProtoTransaction.stats
+        '''
         prototransaction_fields = [ f.name for f in ProtoTransaction._meta.fields ]
 
         pt_dict = {
@@ -604,17 +634,29 @@ class RecordMeta(BaseModel):
 
     # -- income, refunds, any amount from an external source to the system 
     RECORD_TYPE_UNKNOWN = 'unknown'
+    # -- refund is weird.. if an amount is returned as part of an 'expense' it should count as reducing 'expenses', not as independent income
+    # -- i.e. tallying up all records typed as 'expense' should be accurate on its own, not needing to combine record types
+    # -- so a refund for a purchase is simply a positive 'expense'
+    # -- and what's a refund? is there such a thing?
     RECORD_TYPE_REFUND = 'refund'
+    RECORD_TYPE_GIFT = 'gift'
+    RECORD_TYPE_EARNEDINTEREST = 'earnedinterest'
+    # -- income earned by selling something? other than services via employment?
+    RECORD_TYPE_SALE = 'sale'
     RECORD_TYPE_INCOME = 'income'
     # -- spending, payments, any amount to an external source from the system 
     RECORD_TYPE_EXPENSE = 'expense'
     RECORD_TYPE_PENALTY = 'penalty'
+
     # -- transfers, amount staying within the system 
     RECORD_TYPE_INTERNAL = 'internal'
 
     RECORD_TYPES = [
         RECORD_TYPE_UNKNOWN,
         RECORD_TYPE_REFUND,
+        RECORD_TYPE_GIFT,
+        RECORD_TYPE_EARNEDINTEREST,
+        RECORD_TYPE_SALE,
         RECORD_TYPE_INCOME,
         RECORD_TYPE_EXPENSE,
         RECORD_TYPE_PENALTY,
@@ -638,7 +680,8 @@ class RecordTypeManager(models.Manager):
         meta_join = RecordMeta.objects.filter(core_fields_hash=OuterRef('core_fields_hash'))
         annotated = super().get_queryset() \
             .annotate(meta_description=meta_join.values('description')) \
-            .annotate(meta_record_type=meta_join.values('record_type'))
+            .annotate(meta_record_type=meta_join.values('record_type')) \
+            .annotate(meta_event_id=meta_join.values('event_id'))
 
         # .annotate(meta_accounted_at=meta_join.values('accounted_at')) \
 
@@ -654,8 +697,9 @@ class BudgetingManager(RecordTypeManager):
 
     def get_queryset(self):
         return super().get_queryset() \
-            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) \
-            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL)
+            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL) \
+            .exclude(meta_event_id__isnull=False)
+            # .exclude(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) \            
             # .exclude(Q(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) | Q(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL))
         
 class Record(BaseModel):

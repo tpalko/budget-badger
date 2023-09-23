@@ -10,10 +10,11 @@
                 <h2>Sorter</h2>
                 <h4>Unaccounted Records</h4>
                 <div>
-                    ${{ stats.abs_total|format_currency }}
-                </div>
-                <div>
-                    {{ stats.count }} records  
+                    Total: ${{ stats.total|format_currency }} ({{ stats.count }} records)
+                    <br />
+                    Credit: ${{ stats.total_credit|format_currency }} ({{ stats.count_credit }} records)
+                    <br />
+                    Debit: ${{ stats.total_debit|format_currency }} ({{ stats.count_debit }} records)
                 </div>
             </div>
             <div class="col-11">

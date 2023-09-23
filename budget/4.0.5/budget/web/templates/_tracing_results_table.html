@@ -1,6 +1,6 @@
 {% load budget_tags %}
 
-<table class="clicky-table">
+<table>
     <tr>
     {% for h in header %}
         <th>{{ h }}</th>
@@ -12,7 +12,7 @@
                 <td>{{ r|lookup:h }}</td>
             {% endfor %}                    
             <td>                        
-                <table class="clicky-table" style="width: 100%">
+                <table>
                     <tr style="width: 14%;">
                     {% for h in match_header %}                                
                         <th>{{ h }}</th>
