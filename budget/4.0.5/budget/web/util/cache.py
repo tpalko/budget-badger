@@ -1,56 +1,62 @@
-import json 
-import redis 
-from django.core import serializers
 import logging 
 
-rds = redis.Redis(host='127.0.0.1', port=6379)
 logger = logging.getLogger(__name__)
 
-def cache_store(key, val):
-    rds.set(key, json.dumps(val))
+class Cache(object):
 
-def cache_fetch(key, callback=None):
-    logger.warning(f'[{key}] fetching objects')
-    obj = rds.get(key)
-    if obj:
-        logger.warning(f'[{key}] cache HIT!')
-        obj = json.loads(obj)
-    else:
-        logger.warning(f'[{key}] cache MISS')
-        if callback:
-            obj = callback()
-            cache_store(key, obj)
-    return obj 
+    __instance = None 
+    _store = None 
 
-def _serialize(objects):
-    return serializers.serialize("json", objects)
-
-def _deserialize(objects):    
-    return [ r.object for r in serializers.deserialize("json", objects) ]
-
-def _cache_store_objects(key, objects):
-    logger.warning(f'[{key}] serializing {len(objects)} objects')
-    serialized_objects = _serialize(objects)
-    logger.warning(f'[{key}] {len(objects)} objects serialized')
-    rds.set(key, serialized_objects)
-    return serialized_objects
-
-def cache_fetch_objects(key, callback=None):
-    logger.warning(f'[{key}] fetching objects')
-    records = rds.get(key)
-    if not records:
-        logger.warning(f'[{key}] cache MISS')
-        if callback:
-            records = _cache_store_objects(key, callback())
-            logger.warning(f'[{key}] {len(records)} objects stored')
-        else:
-            logger.warning(f'[{key}] no callback provided, returning nothing')
-    else:
-        logger.warning(f'[{key}] cache HIT!')
+    @staticmethod 
+    def kwargs_to_key(**kwargs):
+        return ":".join([ f'{k}={kwargs[k]}' for k in kwargs ])
     
-    if records:
-        logger.warning(f'[{key}] deserializing data size {len(records)}')
-        records = _deserialize(records)
-        logger.warning(f'[{key}] deserialized {len(records)} records')
+    @staticmethod 
+    def invalidate_by_kwargs(**kwargs):
+        Cache.getInstance().invalidate(Cache.kwargs_to_key(**kwargs))
+    
+    @staticmethod 
+    def invalidate(key=None):
 
-    return records 
+        if key is None:
+            Cache.getInstance().__instance._store = {} 
+            # for k in Cache.getInstance().__instance._store.keys():
+            #     del Cache.getInstance().__instance._store[k]
+        elif key != "":
+            if key in Cache.getInstance().__instance._store:
+                del Cache.getInstance().__instance._store[key] 
+
+    @staticmethod 
+    def store_by_kwargs(value, **kwargs):
+        return Cache.getInstance().store(":".join([ f'{k}={kwargs[k]}' for k in kwargs ]), value)
+
+    @staticmethod
+    def store(key, value):
+        Cache.getInstance().__instance._store[key] = value 
+        return key 
+    
+    @staticmethod 
+    def fetch_by_kwargs(**kwargs):
+        key = ":".join([ f'{k}={kwargs[k]}' for k in kwargs ])
+        return Cache.getInstance().fetch(key)
+        
+    @staticmethod
+    def fetch(key):
+        value = None 
+        if key in Cache.__instance._store:
+            value = Cache.getInstance().__instance._store[key]
+        else:
+            logger.debug(f'no cache entry for {key}')
+        return value, key 
+    
+    @staticmethod
+    def getInstance():
+        if not Cache.__instance:
+            Cache()
+        return Cache.__instance
+
+    def __init__(self, *args, **kwargs):
+        if Cache.__instance:
+            raise Exception("Cache instance exists!")
+        self._store = {} 
+        Cache.__instance = self 

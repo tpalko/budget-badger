@@ -30,17 +30,39 @@
                                 <td>{{ assoc.account }}</td>
                                 <td title="{{ assoc.extra_fields }}">{% if assoc.description %}{{ assoc.description }}{% else %}<span class="missing-data">no data</span>{% endif %}</td>        
                                 <td>{{ assoc.amount }}</td>
-                                <td>{{ assoc.record_type }}</td>
-                                <td><input type="radio"  value="{{ assoc.id }}" name="{{ record.id }}-assoc_id" /></td>
+                                <td>{{ assoc.meta_record_type }}</td>
+                                <td><input type="radio" data-recordid="{{ record.id }}" value="{{ assoc.id }}" name="{{ record.id }}-assoc_id" /></td>
                             </tr>
                             {% endfor %}
                         </table>
                     {% endif %}
                 
-                    {% include "_record_meta_form.html" with selected_record=record %}
+                    
                 </form>
+
+                {% include "_record_meta_form.html" with selected_record=record %}
                 
             </td>   
         </tr>
     {% endfor %}
 </table>
+
+{% block script %}
+
+<script language="javascript">
+
+document.addEventListener("DOMContentLoaded", (e) => {
+    document.querySelectorAll("input[type='radio']").forEach((e, i) => {
+        if (e.dataset.recordid !== undefined) {
+            e.addEventListener('click', (e) => {
+                var record_id = e.target.dataset.recordid;
+                var form = document.querySelector("form#record_" + record_id + "_meta");
+                form.assoc_record_id.value = e.target.value;
+            })
+        }
+    })
+});
+
+</script>
+
+{% endblock %}

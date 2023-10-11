@@ -47,12 +47,21 @@ body.dark {
 }
 
 .messages {
-	border: 1px solid red;
+	border: 2px solid #3333ff;
+	background-color: #9999ff;
+	padding: 5px; 
+	color: #0000ff;
+	font-weight: bold;
+}
+
+ul.messages li {
+	border: 1px solid #999999;
+	margin-top: 3px;
 }
 
 .missing-data {
 	font-style: italic;
-	color: #666;
+	color: #ccc;
 }
 
 .content {

@@ -1,5 +1,6 @@
 from turtle import hideturtle
 from django.db.models import Q
+from django.db.models.base import Model
 from django.forms import Form, ModelChoiceField, ModelForm, HiddenInput, CharField, ChoiceField, BooleanField, BaseFormSet, DecimalField, formset_factory
 from django.forms.models import modelformset_factory, BaseModelFormSet
 from django.core.exceptions import ValidationError
@@ -96,6 +97,14 @@ class TransactionRuleSetForm(ModelForm):
 
         super(TransactionRuleSetForm, self).__init__(*args, **kwargs)
 
+class AccountChoiceField(ModelChoiceField):
+    def label_from_instance(self, obj: Model) -> str:
+        return f'{obj.name} ({obj.account_number if obj.account_number else "n/a"})'
+
+class CreditCardChoiceField(ModelChoiceField):
+    def label_from_instance(self, obj: Model) -> str:
+        return f'{obj.name} ({obj.account_number if obj.account_number else "n/a"})'
+    
 class TransactionRuleSetChoiceField(ModelChoiceField):
     def label_from_instance(self, obj):
         return f'{obj.name} (priority {obj.priority}, joined with {obj.join_operator}, {len(obj.records())} records)'
@@ -131,7 +140,7 @@ class RecordForm(ModelForm):
 
     class Meta:
         model = Record 
-        fields = ['transaction_date', 'post_date', 'description', 'amount', 'extra_fields', 'uploaded_file'] #, 'account', 'creditcard'] #'account_type', 'type', 'ref', 'credits', 'debits', ]
+        fields = ['transaction_date', 'post_date', 'description', 'amount', 'extra_fields', 'uploaded_file', 'raw_data_line'] #, 'account', 'creditcard'] #'account_type', 'type', 'ref', 'credits', 'debits', ]
 
     # account = ModelChoiceField(queryset=Account.objects.all(), required=False)
     # creditcard = ModelChoiceField(queryset=CreditCard.objects.all(), required=False)
@@ -150,7 +159,7 @@ class RecordForm(ModelForm):
 
         super(RecordForm, self).is_valid()
 
-        missing_fields = [ f for f in ['uploaded_file', 'transaction_date', 'description', 'amount'] if f not in self.cleaned_data ]
+        missing_fields = [ f for f in ['uploaded_file', 'transaction_date', 'description', 'amount', 'raw_data_line'] if f not in self.cleaned_data ]
         
         if len(missing_fields) > 0:
             raise Exception(_(f'field(s) "{",".join(missing_fields)}" missing from the cleaned data of this record'))
@@ -188,26 +197,23 @@ class RecordForm(ModelForm):
         if self.cleaned_data['description'] is not None and self.cleaned_data['description'].strip() != '':
 
             possible_fixed_duplicates = Record.objects.filter(
-                (Q(description__isnull=True) | Q(description='')),
                 ~Q(uploaded_file=self.cleaned_data['uploaded_file']),
-                transaction_date=self.cleaned_data['transaction_date'] if 'transaction_date' in self.cleaned_data else None,                 
-                amount=self.cleaned_data['amount'] if 'amount' in self.cleaned_data else None       
+                (Q(description__isnull=True) | Q(description='')),                
+                transaction_date=self.cleaned_data['transaction_date'],
+                amount=self.cleaned_data['amount']
             )
-
-            corrected_count = 0
 
             for pfd in possible_fixed_duplicates:
                 logger.warning(f'updating record {pfd.id} description "{pfd.description}" => "{self.cleaned_data["description"]}"')
                 pfd.description = self.cleaned_data['description']
                 pfd.save()
-                corrected_count += 1
-            
+
             fixed_dupe_count = len(possible_fixed_duplicates)
 
             if fixed_dupe_count > 0:
                 logger.warning(f'found {fixed_dupe_count} possibly fixed duplicates in the database')
-                raise ValidationError(_(f'RecordForm.is_valid: {fixed_dupe_count} possibly fixed duplicates matched, {corrected_count} corrected, form invalid'))
-                
+                raise ValidationError(_(f'RecordForm.is_valid: {fixed_dupe_count} matched records without descriptions fixed, no new record to be written'))
+        
         # -- the following python and mariadb techniques, respectively, (can) result in the same output 
         # hashlib.md5(json.dumps(r.extra_fields, ensure_ascii=True, sort_keys=True).encode('utf-8')).hexdigest() 
         # md5(extra_fields)
@@ -220,7 +226,9 @@ class UploadedFileForm(ModelForm):
         model = UploadedFile 
         fields = ['upload', 'account', 'creditcard', 'original_filename', 'header_included']
         exclude = ['new_type']
-        
+    
+    account = AccountChoiceField(queryset=Account.objects.order_by('name', 'account_number'), required=False)
+    creditcard = CreditCardChoiceField(queryset=CreditCard.objects.order_by('name', 'account_number'), required=False)
     original_filename = CharField(widget=HiddenInput())
     header_included = BooleanField(initial=True)
     new_type = ChoiceField(choices=choiceify(['no new type', 'account', 'creditcard']), required=False)

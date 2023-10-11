@@ -7,7 +7,7 @@ from django.urls import resolve, reverse
 from django.db.models import Q
 
 from web.util.viewutil import get_querystring
-from web.models import Event, RecordMeta, TransactionRuleSet
+from web.models import Vehicle, Property, Event, RecordMeta, TransactionRuleSet
 
 def format_url(view_name, kwargs={}):
     kwargs.update({'tenant_id': 1})
@@ -76,5 +76,7 @@ def budget_context(request_context):
         'menu': menu,
         'record_types': RecordMeta.RECORD_TYPES,
         'join_operators': TransactionRuleSet.join_operator_choices,
-        'events': Event.objects.all()
+        'events': Event.objects.all(),
+        'properties': Property.objects.all(),
+        'vehicles': Vehicle.objects.all()
     }

@@ -1,4 +1,4 @@
-from django.db.models import Q, F
+from django.db.models import Q, F, DEFERRED
 from django.db import models
 from django.db.models import OuterRef, F
 from django.utils.translation import gettext_lazy as _
@@ -8,11 +8,9 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 import logging
 from datetime import datetime, timedelta, date
 import calendar
-import hashlib
-import simplejson as json 
 import web.util.dates as utildates
-from web.util.modelutil import choiceify, TransactionTypes
-from web.util.ruleindex import wipe_rule_index_cache
+from web.util.modelutil import choiceify, TransactionTypes, record_hash
+from web.util.ruleindex import Cache 
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +134,9 @@ class UploadedFile(BaseModel):
     
     def account_name(self):
         return self.account.name if self.account else self.creditcard.name if self.creditcard else "-no acct/cc-"
+
+    def account_number(self):
+        return self.account.account_number if self.account else self.creditcard.account_number if self.creditcard else "-no acct/cc #-"
     
 class Event(BaseModel):
 
@@ -223,8 +224,8 @@ class TransactionRuleSet(BaseModel):
 
             ## sorter page: 13s cold, 9s subsequent
             # self._records = records_from_accounted_priority(self.priority)
-        else:
-            logger.debug(f'Using cached records for transactionruleset {self.id}')
+        # else:
+        #     logger.debug(f'Using cached records for transactionruleset {self.id}')
 
         return self._records 
 
@@ -237,10 +238,44 @@ class TransactionRuleSet(BaseModel):
         except:
             return None 
     
+    # @classmethod
+    # def from_db(cls, db, field_names, values):
+    #     # Default implementation of from_db() (subject to change and could
+    #     # be replaced with super()).
+    #     if len(values) != len(cls._meta.concrete_fields):
+    #         values = list(values)
+    #         values.reverse()
+    #         values = [
+    #             values.pop() if f.attname in field_names else DEFERRED
+    #             for f in cls._meta.concrete_fields
+    #         ]
+    #     instance = cls(*values)
+    #     instance._state.adding = False
+    #     instance._state.db = db
+    #     # customization to store the original field values on the instance
+    #     instance._loaded_values = dict(
+    #         zip(field_names, (value for value in values if value is not DEFERRED))
+    #     )
+    #     return instance
+
     def save(self, *args, **kwargs):
+
+        # previous_priority = None 
+
+        # if not self._state.adding:
+        #     previous_priority = self._loaded_values['priority']
+
         super(TransactionRuleSet, self).save(*args, **kwargs)
 
-        wipe_rule_index_cache()
+        # wipe_above_priority = self.priority 
+
+        # if previous_priority and wipe_above_priority > previous_priority:
+        #     wipe_above_priority = previous_priority
+
+        # for trs in TransactionRuleSet.objects.filter(is_auto=self.is_auto, priority__gte=wipe_above_priority):
+        #     Cache.invalidate_by_kwargs(transactionruleset_id=trs.id)
+
+        Cache.invalidate()
 
         # logger.debug(f'Wiping accounted priority from records in ruleset {self.id}')
         # for record in self.records():
@@ -346,30 +381,53 @@ class TransactionRule(BaseModel):
 class ProtoTransaction(BaseModel):
     '''A transitional object between a rule set -- a logical grouping of records, and a full-on transaction -- a budgetable spending abstraction'''
 
+    DIRECTION_CREDIT = 'credit'
+    DIRECTION_DEBIT = 'debit'
+
     EXCLUDE_STAT_FIELDS = ['record_count', 'record_ids']
 
     transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)        
     name = models.CharField(max_length=200, unique=True)
     
-    # -- emitted from stats
-    is_active = models.BooleanField(null=False, default=True)
+    CRITICALITY_NECESSARY = 'necessary'
+    CRITICALITY_FLEXIBLE = 'flexible'
+    CRITICALITY_OPTIONAL = 'optional'
 
+    # -- emitted from stats (not anymore, debit/credit split)
+    # is_active = models.BooleanField(null=False, default=True)
     # -- 
     # -- tax_category to categorize expenses for tax purposes
     tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
     # -- we can guess at this
     period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
-    monthly_spend = models.DecimalField(decimal_places=2, max_digits=20, null=True)
-    monthly_earn = models.DecimalField(decimal_places=2, max_digits=20, null=True)
-
+    # monthly_spend = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    # monthly_earn = models.DecimalField(decimal_places=2, max_digits=20, null=True)
+    
     # -- probably trash transaction_type
     transaction_type = models.CharField(max_length=50, choices=TransactionTypes.transaction_type_choices, default=TransactionTypes.TRANSACTION_TYPE_DEBT)
     timing = models.CharField(max_length=20, choices=TransactionTypes.timing_choices, default=TransactionTypes.TRANSACTION_TIMING_SINGLE)
     # -- recurring_amount means little, very few expenses repeat to the penny, and the fact that they do is insignificant
     recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
-        
+
+    criticality = models.CharField(max_length=20, choices=choiceify([CRITICALITY_FLEXIBLE, CRITICALITY_NECESSARY, CRITICALITY_OPTIONAL]), null=False, default=CRITICALITY_OPTIONAL)
+
+    # -- stats contains 'debit' and 'credit', each of which have 'average_for_period' and 'average_for_month'    
     stats = models.JSONField(null=True)
     
+    def is_active(self):
+        return ('is_active' in self.stats['debit'] and self.stats['debit']['is_active']) \
+            or ('is_active' in self.stats['credit'] and self.stats['credit']['is_active'])
+
+    def average_for_month(self, direction):
+        if direction in self.stats and 'average_for_month' in self.stats[direction]:
+            return self.stats[direction]['average_for_month']
+        return None
+
+    def average_for_period(self, direction):
+        if direction in self.stats and 'average_for_period' in self.stats[direction]:
+            return self.stats[direction]['average_for_period']
+        return None
+
     def cross_account(self):
         return len(self.stats['accounts'] + self.stats['creditcards']) > 1
 
@@ -629,7 +687,9 @@ class RecordMeta(BaseModel):
 
     class Meta:
         indexes = [
-            models.Index(fields=['core_fields_hash'])
+            models.Index(fields=['core_fields_hash']),
+            models.Index(fields=['raw_data_line_hash']),
+            models.Index(fields=['core_fields_hash', 'raw_data_line_hash'])
         ]
 
     # -- income, refunds, any amount from an external source to the system 
@@ -665,6 +725,7 @@ class RecordMeta(BaseModel):
 
     extra_fields_hash = models.CharField(max_length=32, null=True)
     core_fields_hash = models.CharField(max_length=32, null=True)
+    raw_data_line_hash = models.CharField(max_length=32, null=True)
     record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)
     property = models.ForeignKey(to=Property, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     vehicle = models.ForeignKey(to=Vehicle, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
@@ -674,14 +735,38 @@ class RecordMeta(BaseModel):
     detail = models.TextField(null=False, blank=True)
     # accounted_at = models.IntegerField(null=True)
 
+    def records(self):
+        # RECORDMETA_RELATIONSHIP_POINT
+        if not self.raw_data_line_hash:
+            logger.warning(f'No raw_data_line_hash value on meta record {self.id}, cannot lookup Records')
+            return Record.objects.none()
+        return Record.objects.filter(raw_data_line_hash=self.raw_data_line_hash)
+    
+    def save(self, *args, **kwargs):
+        super(RecordMeta, self).save(*args, **kwargs)
+        Cache.invalidate()
+
 class RecordTypeManager(models.Manager):
 
+    '''
+    -- cancelling double records where a re-upload had a description and the original was blank
+    update web_record r 
+    inner join web_record r2 on r2.amount = r.amount and r2.transaction_date = r.transaction_date 
+    set r.is_valid = 0
+    where (r.description = '') 
+    and r.id <> r2.id 
+    order by r.transaction_date, r.amount;
+    '''
+    # RECORDMETA_RELATIONSHIP_POINT
     def get_queryset(self):
-        meta_join = RecordMeta.objects.filter(core_fields_hash=OuterRef('core_fields_hash'))
+        meta_join = RecordMeta.objects.filter(raw_data_line_hash=OuterRef('raw_data_line_hash'))
         annotated = super().get_queryset() \
+            .filter(is_valid=True) \
             .annotate(meta_description=meta_join.values('description')) \
             .annotate(meta_record_type=meta_join.values('record_type')) \
-            .annotate(meta_event_id=meta_join.values('event_id'))
+            .annotate(meta_event_id=meta_join.values('event_id')) \
+            .annotate(meta_vehicle_id=meta_join.values('vehicle_id')) \
+            .annotate(meta_property_id=meta_join.values('property_id'))
 
         # .annotate(meta_accounted_at=meta_join.values('accounted_at')) \
 
@@ -713,7 +798,9 @@ class Record(BaseModel):
             models.Index(fields=['description']),
             # models.Index(fields=['record_type', 'accounted_at']),
             models.Index(fields=['extra_fields_hash']),
-            models.Index(fields=['core_fields_hash'])
+            models.Index(fields=['core_fields_hash']),
+            models.Index(fields=['raw_data_line_hash']),
+            models.Index(fields=['core_fields_hash', 'raw_data_line_hash'])
         ]
 
     # record_group = models.ForeignKey(to=RecordGroup, related_name='records', on_delete=models.SET_NULL, null=True)
@@ -728,8 +815,11 @@ class Record(BaseModel):
     amount = models.DecimalField(decimal_places=2, max_digits=20)    
     # record_type = models.CharField(max_length=15, null=False, choices=choiceify(RecordMeta.RECORD_TYPES), default=RecordMeta.RECORD_TYPE_UNKNOWN)        
     extra_fields = models.JSONField(null=True)
+    is_valid = models.BooleanField(null=False, default=True)
     extra_fields_hash = models.CharField(max_length=32, null=True)
     core_fields_hash = models.CharField(max_length=32, null=True)
+    raw_data_line = models.TextField(null=True)
+    raw_data_line_hash = models.CharField(max_length=32, null=True)
     
     '''
     select transaction_date, description, amount, count(*) from web_record group by transaction_date, description, amount order by count(*);
@@ -741,17 +831,35 @@ class Record(BaseModel):
         #     self.account = self.uploaded_file.account
     
     def __str__(self):
-        return f'{self.id}, {self.uploaded_file.account or self.uploaded_file.creditcard}, {self.transaction_date}, {self.description}, {self.amount}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
+        return f'{self.id}, {self.uploaded_file.account or self.uploaded_file.creditcard}, {self.transaction_date}, {self.description}, {self.amount}, {self.extra_fields}' #, {self.account_type}, {self.type}, {self.ref}, {self.credits}, {self.debits}'
 
     def full_description(self):
         return self.description if self.meta_description == "" else f'{self.description} - {self.meta_description}'
 
+    def record_meta(self):
+        # RECORDMETA_RELATIONSHIP_POINT
+        if not self.raw_data_line_hash:            
+            logger.warning(f'No raw_data_line_hash value on record {self.id}, cannot lookup RecordMeta')
+            return RecordMeta.objects.none()
+        return RecordMeta.objects.filter(raw_data_line_hash=self.raw_data_line_hash).first()
+    
     def save(self, *args, **kwargs):
         
+        # -- when shifting the relationship between Record<->RecordMeta on different hash values
+        # -- it is critical to remember that RecordMeta are not necessarily distinct, and this
+        # -- is a flaw, absolutely, but without a solid solution. because of this indistinction
+        # -- one RecordMeta has the potential to represent multiple Records, and on improving 
+        # -- the process of finding a distinct fingerprint for a Record, we cannot simply 
+        # -- add the new fingerprint for a Record to its existing RecordMeta - the other Records
+        # -- represented by that RecordMeta will need to do the same thing - so we must each time 
+        # -- we improve create a new RecordMeta and copy the fields from the old one.
+        # -- this wasn't wordy enough, really 
+
         if self.extra_fields is None:
             self.extra_fields = {}
         
-        self.extra_fields_hash = hashlib.md5(json.dumps(self.extra_fields, sort_keys=True, ensure_ascii=True).encode('utf-8')).hexdigest()
+        self.extra_fields_hash = record_hash(self.extra_fields)
+
         core_fields_dict = {
             'transaction_date': datetime.strftime(self.transaction_date, "%s"), 
             'description': self.description, 
@@ -759,36 +867,94 @@ class Record(BaseModel):
             **self.extra_fields
         }
     
-        self.core_fields_hash = hashlib.md5(            
-            json.dumps(core_fields_dict, sort_keys=True, ensure_ascii=True, use_decimal=True).encode('utf-8')
-        ).hexdigest()
-        
-        core_meta = RecordMeta.objects.filter(core_fields_hash=self.core_fields_hash).first()        
-        meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
+        self.core_fields_hash = record_hash(core_fields_dict)
+        core_meta = RecordMeta.objects.filter(core_fields_hash=self.core_fields_hash).first()   
 
-        meta_copy = {}
-        if meta:            
-            meta_copy = { 
-                d: meta.__dict__[d] 
-                for d in meta.__dict__.keys() 
-                    if d in [ 
-                        f.name 
-                        for f in RecordMeta._meta.fields 
-                    ] and d not in [
-                        'id', 
-                        'created_at', 
-                        'updated_at', 
-                        'deleted_at', 
-                        'extra_fields_hash' 
-                    ] 
-            }
+        raw_meta = None 
 
-        meta_copy.update({'core_fields_hash': self.core_fields_hash})
+        if self.raw_data_line:
 
-        if not core_meta:
-            logger.debug(f'record core fields: {core_fields_dict}')
-            core_meta = RecordMeta.objects.create(**meta_copy)
-            logger.info(f'missing core meta record {core_meta.id} created')
+            raw_data_line_hash = record_hash(self.raw_data_line)
+
+            if self.raw_data_line_hash and raw_data_line_hash != self.raw_data_line_hash:
+                raise Exception(f'record attempted to save with altered raw_data_line: ')
+
+            logger.debug(f'record raw line: {self.raw_data_line} / {self.raw_data_line_hash}')
+
+            raw_meta = RecordMeta.objects.filter(raw_data_line_hash=self.raw_data_line_hash).first()
+            
+             
+            # meta = RecordMeta.objects.filter(extra_fields_hash=self.extra_fields_hash).first()
+
+            # meta_copy = {}
+            # if meta:            
+            #     meta_copy = { 
+            #         d: meta.__dict__[d] 
+            #         for d in meta.__dict__.keys() 
+            #             if d in [ 
+            #                 f.name 
+            #                 for f in RecordMeta._meta.fields 
+            #             ] and d not in [
+            #                 'id', 
+            #                 'created_at', 
+            #                 'updated_at', 
+            #                 'deleted_at', 
+            #                 'extra_fields_hash' 
+            #             ] 
+            #     }
+
+            # meta_copy.update({'core_fields_hash': self.core_fields_hash})
+
+            # if not core_meta:
+            #     logger.debug(f'record core fields: {core_fields_dict}')
+            #     core_meta = RecordMeta.objects.create(**meta_copy)
+            #     logger.info(f'missing core meta record {core_meta.id} created')
+
+        meta_copy_fields = ['record_type', 'property_id', 'vehicle_id', 'event_id', 'target', 'description', 'detail']
+
+        core_meta_copy = {}
+        if core_meta:            
+
+            core_meta_copy = { f: core_meta.__dict__[f] for f in meta_copy_fields }
+
+            # core_meta_copy = { 
+            #     d: core_meta.__dict__[d] 
+            #     for d in core_meta.__dict__.keys() 
+            #         if d in [ 
+            #             f.name 
+            #             for f in RecordMeta._meta.fields 
+            #         ] and d not in [
+            #             'id', 
+            #             'created_at', 
+            #             'updated_at', 
+            #             'deleted_at', 
+            #             'extra_fields_hash',
+            #             'core_fields_hash'
+            #         ] 
+            # }
+
+        core_meta_copy.update({'raw_data_line_hash': self.raw_data_line_hash})
+
+        if not raw_meta:
+            raw_meta = RecordMeta.objects.create(**core_meta_copy)
+            logger.info(f'missing raw meta record {raw_meta.id} created with {core_meta_copy}')
+        else:
+            for c in core_meta_copy.keys():
+                if getattr(raw_meta, c):
+                    logger.warning(f'meta {raw_meta.id} has {c} = {getattr(raw_meta, c)}')
+                else:
+                    logger.warning(f'meta {raw_meta.id} -- setting {c} = {core_meta_copy[c]}')
+                    setattr(raw_meta, c, core_meta_copy[c])
+                logger.warning(f'meta {raw_meta.id} saving')
+                raw_meta.save()
+
+        '''
+        comparison of core fields meta with raw data line meta:
+        select r.id, r.transaction_date, r.description, r.amount, r.raw_data_line, r.raw_data_line_hash, m.id, m.record_type, m.event_id, m.description from web_record r left join web_recordmeta m on (m.core_fields_hash = r.core_fields_hash or m.raw_data_line_hash = r.raw_data_line_hash) where r.uploaded_file_id = 190 order by r.id;
+        '''            
+            # raw_meta.update(**core_meta_copy)
+            # raw_meta.save()
+
 
         # if self.record_type == RecordMeta.RECORD_TYPE_UNKNOWN:
         #     self.record_type = core_meta.record_type 
@@ -796,9 +962,11 @@ class Record(BaseModel):
         # if self.accounted_at is None:
         #     self.accounted_at = core_meta.accounted_at
 
-        logger.info(f'record saving with extra_fields_hash {self.extra_fields_hash}, core_fields_hash {self.core_fields_hash}: {args}')
+        logger.info(f'record saving with extra_fields_hash {self.extra_fields_hash}, core_fields_hash {self.core_fields_hash}, raw_data_line_hash {self.raw_data_line_hash}: {args}')
 
         super(Record, self).save(*args, **kwargs)
+
+        Cache.invalidate()
 
     #     self.clean()
     #     matches = Record.objects.filter(

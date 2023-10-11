@@ -2,17 +2,17 @@
 
 <div class="row">
     <div class="col-16">
-        <h3>Month Heatmap</h3>
+        <h3>Day Heatmap</h3>
         <table class="heatmap_table">
             <tr>
                 {% for day in 31|genrange %}
-                    {% with heat_class=heatmap_data.heatmap_normalized|lookup:day %}
-                    <td class="heat-{% if heat_class %}{{ heat_class }}{% else %}0{% endif %}" data-region="{{ heatmap_data.heatmap_region_lookup|lookup:day }}">
+                    {% with heat_class=heatmap_data.day_heatmap_normalized|lookup:day %}
+                    <td class="heat-{% if heat_class %}{{ heat_class }}{% else %}0{% endif %}" data-region="{{ heatmap_data.day_heatmap_region_lookup|lookup:day }}">
                         <span class="day">{{ day }}</span>
-                        {% with heat_value=heatmap_data.heatmap|lookup:day %}
+                        {% with heat_value=heatmap_data.day_heatmap|lookup:day %}
                         <span class="heat">{% if heat_value %}{{ heat_value }}{% else %}0{% endif %}</span>
                         {% endwith %}
-                         <span class="heatmap_region">{{ heatmap_data.heatmap_region_lookup|lookup:day }}</span>
+                         <span class="heatmap_region">{{ heatmap_data.day_heatmap_region_lookup|lookup:day }}</span>
                     </td>
                     {% endwith %}
                     {% if day|mod:7 == 0 %}</tr><tr>{% endif %}
@@ -31,6 +31,24 @@
                 <td class="heat-{% if heat_class %}{{ heat_class }}{% else %}0{% endif %}">
                     {% with heat_value=heatmap_data.weekday_heatmap|lookup:weekday %}
                     {{ weekday }} ({% if heat_value %}{{ heat_value }}{% else %}0{% endif %} / {% if heat_class %}{{ heat_class }}{% else %}0{% endif %})
+                    {% endwith %}
+                </td>
+                {% endwith %}
+            {% endfor %}
+            </tr>
+        </table>
+    </div>
+</div>
+<div class="row">
+    <div class="col-16">
+        <h3>Month Heatmap</h3>
+        <table class="heatmap_table">
+            <tr>
+            {% for month in heatmap_data.all_months %}
+                {% with heat_class=heatmap_data.month_heatmap_normalized|lookup:month %}
+                <td class="heat-{% if heat_class %}{{ heat_class }}{% else %}0{% endif %}">
+                    {% with heat_value=heatmap_data.month_heatmap|lookup:month %}
+                    {{ month }} ({% if heat_value %}{{ heat_value }}{% else %}0{% endif %} / {% if heat_class %}{{ heat_class }}{% else %}0{% endif %})
                     {% endwith %}
                 </td>
                 {% endwith %}

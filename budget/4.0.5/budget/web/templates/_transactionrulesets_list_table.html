@@ -25,25 +25,58 @@
                 <th># Records</th>
                 <th>xAcct</th>
                 <th>Period</th>
+                <th>Avg / period</th>
                 <th>$/month in</th>
                 <th>$/month out</th>
             </tr>
         {% for transactionruleset in table %}
             <tr id="transactionruleset-{{transactionruleset.id }}" title="{% if transactionruleset.prototransaction %}{{ transactionruleset.prototransaction.stats }}{% endif %}" class="ruleset-status-{% if transactionruleset.prototransaction %}{% if transactionruleset.prototransaction.is_active %}active{% else %}inactive{% endif %}{% else %}unknown{% endif %}">
                 <td nowrap>
-                    <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}">edit</a>
+                    <div>
+                        <a href="{% url "transactionruleset" tenant_id=1 transactionruleset_id=transactionruleset.id %}">manage</a>
+                    </div>
+                    <div>
+                        <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=transactionruleset.id %}">edit</a>
+                    </div>
                     {% if not transactionruleset.is_auto %}
-                    <a href="{%  url "transactionruleset_delete" tenant_id=1 transactionruleset_id=transactionruleset.id %}" class="delete" data-deletecallback="transactionruleset_deleted_handler">delete</a>
+                    <div>
+                        <a href="{%  url "transactionruleset_delete" tenant_id=1 transactionruleset_id=transactionruleset.id %}" class="delete" data-deletecallback="transactionruleset_deleted_handler">delete</a>
+                    </div>
                     {% endif %}
                 </td>
                 <td>{{ transactionruleset.priority }}</td>
                 <td title="{% for transactionrule in transactionruleset.transactionrules.all %}#{{ forloop.counter }}. {% if forloop.counter0 > 0 %}{{ transactionruleset.join_operator }} {% endif %}{{ transactionrule.record_field }} {{ transactionrule.match_operator }} {{ transactionrule.match_value}}{% endfor %}">{{ transactionruleset.name }}</td>        
                 <td>{{ transactionruleset.records|length }}</td>
                 {% if transactionruleset.prototransaction %}
-                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.cross_account }}</td>                    
-                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.period }}</td>                    
-                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.monthly_earn|format_currency }}</td>                    
-                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.monthly_spend|format_currency }}</td>                    
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.cross_account }}</td>
+                    <td class="prototransaction-field">{{ transactionruleset.prototransaction.period }}</td>
+                    <td class="prototransaction-field">
+                        {% if direction %}
+                        {% with call_args="average_for_period,"|add:direction %}
+                        ${{ transactionruleset.prototransaction|call:call_args|format_currency }}
+                        {% endwith %}
+                        / 
+                        {% with call_args="average_for_month,"|add:direction %}
+                        ${{ transactionruleset.prototransaction|call:call_args|format_currency }}
+                        {% endwith %}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>                    
+                    <td class="prototransaction-field" nowrap>
+                        {% for month in transactionruleset.prototransaction.stats.monthly %}
+                        <div>
+                            {{ month|lookup:"month" }}: ${{ month|lookup:"credit"|format_currency }}
+                        </div>
+                        {% endfor %}                         
+                    </td>
+                    <td class="prototransaction-field" nowrap>
+                        {% for month in transactionruleset.prototransaction.stats.monthly %}
+                        <div>
+                            {{ month|lookup:"month" }}: ${{ month|lookup:"debit"|format_currency }}
+                        </div>
+                        {% endfor %}
+                    </td>
                 {% else %}
                     <td>-</td>
                     <td>-</td>

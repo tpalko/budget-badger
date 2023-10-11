@@ -42,7 +42,7 @@ def account_home(request, tenant_id):
 
 def model_list(request, tenant_id):
 
-    accounts = Account.objects.order_by('id')
+    accounts = Account.objects.order_by('name')
     creditcards = CreditCard.objects.all()
     recordformats = RecordFormat.objects.all()
     properties = Property.objects.all()
@@ -123,6 +123,12 @@ def event_manage(request, tenant_id, event_id):
     records = Record.objects.filter(transaction_date__gte=event.started_at, transaction_date__lt=event.ended_at + timedelta(days=2)).order_by('-transaction_date')
 
     return render(request, 'event.html', { 'event': event, 'records': records })
+
+def transactionruleset(request, tenant_id, transactionruleset_id):
+
+    ruleset = TransactionRuleSet.objects.get(pk=transactionruleset_id)
+
+    return render(request, 'transactionruleset.html', { 'ruleset': ruleset })
 
 def transactionrulesets_list(request, tenant_id, transactionruleset_id=None):
     
@@ -217,7 +223,7 @@ def recordmatcher(request, tenant_id):
             
             transactionrule_formset.is_valid(preRuleSet=transactionruleset is None)
             
-            logger.warning(f'Getting records from {[ form.cleaned_data for form in transactionrule_formset ]}')
+            logger.debug(f'Getting records from {[ form.cleaned_data for form in transactionrule_formset ]}')
 
             # -- yes, we're recreating the TransactionRuleSet.records method here, we don't have actual objects
             # -- sort of.. just the forms that hold the fields for the objects
@@ -240,7 +246,9 @@ def recordmatcher(request, tenant_id):
                 response['data'][key] = {}
                 recordset = split_recordsets[key]['records']
 
-                pared_recordset, removed = RecordGrouper.filter_accounted_records(recordset, less_than_priority=priority, is_auto=False)
+                # -- this accounted filtering doesn't really need to happen inside the positive/negative loop
+                # -- but if we want to show "# accounted and removed" stats on the page, it does 
+                pared_recordset, removed = RecordGrouper.filter_accounted_records(records=recordset, less_than_priority=priority, is_auto=False)
 
                 pared_record_count = len(pared_recordset)
 
@@ -296,7 +304,7 @@ def sorter(request, tenant_id):
     
     transactionrulesets = TransactionRuleSet.objects.filter(is_auto=False)
     records, removed = RecordGrouper.filter_accounted_records(
-        Record.budgeting.order_by('amount'), 
+        records=Record.budgeting.order_by('amount'), 
         is_auto=False
     )
     tokens = tokenize_records(records)
@@ -326,50 +334,54 @@ def sorter(request, tenant_id):
 
 def alignment(request, tenant_id):
 
-    misses = 0 
+    # misses = 0 
     monthly_records = {}
 
     account_brackets, card_brackets = coverage_brackets()
 
-    for month_start, month_end in RecordGrouper.months():    
+    first_date_file = UploadedFile.objects.order_by('first_date').first()
+    
+    if first_date_file:
+            
+        for month_start, month_end in RecordGrouper.months(first_date_file.first_date):    
 
-        brackets = generate_display_brackets(account_brackets, card_brackets, month_start.date(), month_end.date())
+            brackets = generate_display_brackets(account_brackets, card_brackets, month_start.date(), month_end.date())
 
-        # logger.debug(f'finding records between {month_start} and {month_end}')
-        month_records = Record.budgeting.filter(transaction_date__gte=month_start, transaction_date__lt=month_end).order_by('transaction_date')
-        
-        if len(month_records) == 0:
-            misses += 1
+            # logger.debug(f'finding records between {month_start} and {month_end}')
+            month_records = Record.budgeting.filter(transaction_date__gte=month_start, transaction_date__lt=month_end).order_by('transaction_date')
+            
+            # if len(month_records) == 0:
+            #     misses += 1
 
-        unaccounted_records, accounted_records = RecordGrouper.filter_accounted_records(month_records, is_auto=False, refresh_cache=False)
+            unaccounted_records, accounted_records = RecordGrouper.filter_accounted_records(records=month_records, is_auto=False, refresh_cache=False)
 
-        total = RecordGrouper.record_magnitude(month_records)
-        total_credit, count_credit, total_debit, count_debit = RecordGrouper.record_magnitude_split(month_records)
-        
-        # credit_records, debit_records = record_split(month_records)
-        
-        total_accounted = RecordGrouper.record_magnitude(accounted_records)
-        total_unaccounted = RecordGrouper.record_magnitude(unaccounted_records)
-        unaccounted_total_credit, unaccounted_count_credit, unaccounted_total_debit, unaccounted_count_debit = RecordGrouper.record_magnitude_split(unaccounted_records)
-        # accounted_total_credit, accounted_count_credit, accounted_total_debit, accounted_count_debit = record_magnitude_split(accounted_records)
+            total = RecordGrouper.record_magnitude(month_records)
+            total_credit, count_credit, total_debit, count_debit = RecordGrouper.record_magnitude_split(month_records)
+            
+            # credit_records, debit_records = record_split(month_records)
+            
+            total_accounted = RecordGrouper.record_magnitude(accounted_records)
+            total_unaccounted = RecordGrouper.record_magnitude(unaccounted_records)
+            unaccounted_total_credit, unaccounted_count_credit, unaccounted_total_debit, unaccounted_count_debit = RecordGrouper.record_magnitude_split(unaccounted_records)
+            # accounted_total_credit, accounted_count_credit, accounted_total_debit, accounted_count_debit = record_magnitude_split(accounted_records)
 
-        month_start_key = datetime.strftime(month_start, "%Y-%m")
-        monthly_records[month_start_key] = {
-            'records': month_records,
-            'total_count': len(month_records),
-            'accounted': len(accounted_records),
-            'accounted_percent': f'{100*total_accounted / total if total > 0 else 0:.1f}%',
-            'unaccounted_percent': f'{100*total_unaccounted / total if total > 0 else 0:.1f}%' + f' ({len(unaccounted_records)})',
-            'unaccounted_credit_amount_percent': f'{100*unaccounted_total_credit / total_unaccounted if total_unaccounted > 0 else 0:.1f}%' + f' ({unaccounted_count_credit})',
-            'unaccounted_debit_amount_percent': f'{100*unaccounted_total_debit / total_unaccounted if total_unaccounted > 0 else 0:.1f}%' + f' ({unaccounted_count_debit})',
-            'expense': -total_debit,
-            'earn': total_credit,
-            'total': total_credit - total_debit,
-            'brackets': brackets,
-        }
+            month_start_key = datetime.strftime(month_start, "%Y-%m")
+            monthly_records[month_start_key] = {
+                'records': month_records,
+                'total_count': len(month_records),
+                'accounted': len(accounted_records),
+                'accounted_percent': f'{100*total_accounted / total if total > 0 else 0:.1f}%',
+                'unaccounted_percent': f'{100*total_unaccounted / total if total > 0 else 0:.1f}%' + f' ({len(unaccounted_records)})',
+                'unaccounted_credit_amount_percent': f'{100*unaccounted_total_credit / total_unaccounted if total_unaccounted > 0 else 0:.1f}%' + f' ({unaccounted_count_credit})',
+                'unaccounted_debit_amount_percent': f'{100*unaccounted_total_debit / total_unaccounted if total_unaccounted > 0 else 0:.1f}%' + f' ({unaccounted_count_debit})',
+                'expense': -total_debit,
+                'earn': total_credit,
+                'total': total_credit - total_debit,
+                'brackets': brackets,
+            }
 
-        if misses >= 3:
-            break 
+            # if misses >= 3:
+            #     break 
     
     transactionrulesets_manual = TransactionRuleSet.objects.filter(is_auto=False)
     breakout = get_ruleset_breakout(transactionrulesets_manual)
@@ -452,143 +464,143 @@ def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule
 
     return render(request, "transactionruleset_edit.html", context)
 
-def transactionruleset_edit_OLD(request, tenant_id, transactionruleset_id=None, rule=None):
+# def transactionruleset_edit_OLD(request, tenant_id, transactionruleset_id=None, rule=None):
 
-    response = {
-        'success': False,
-        'form_errors': [],
-        'match_errors': [],
-        'errors': [],
-        'data': {
-            'records': [],                 
-            # 'unaccounted_record_ids': ""                
-        }
-    }
+#     response = {
+#         'success': False,
+#         'form_errors': [],
+#         'match_errors': [],
+#         'errors': [],
+#         'data': {
+#             'records': [],                 
+#             # 'unaccounted_record_ids': ""                
+#         }
+#     }
 
-    transactionruleset = None 
+#     transactionruleset = None 
 
-    try:
+#     try:
 
-        transactionruleset, transactionrule_formset = get_transactionrule_components(
-            request=request, 
-            transactionruleset_id=transactionruleset_id
-        )
+#         transactionruleset, transactionrule_formset = get_transactionrule_components(
+#             request=request, 
+#             transactionruleset_id=transactionruleset_id
+#         )
 
-        transactionruleset_form = TransactionRuleSetForm(request.POST)
-        if transactionruleset_id:
-            transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)
+#         transactionruleset_form = TransactionRuleSetForm(request.POST)
+#         if transactionruleset_id:
+#             transactionruleset_form = TransactionRuleSetForm(request.POST, instance=transactionruleset)
         
-        if request.method == "DELETE":
+#         if request.method == "DELETE":
 
-            try:
-                transactionruleset.delete()
-                response['success'] = True 
-            except:
-                message = sys.exc_info()[1]
-                logger.error(sys.exc_info()[0])
-                logger.error(message)
-                traceback.print_tb(sys.exc_info()[2])
-                response['errors'].append(message)
+#             try:
+#                 transactionruleset.delete()
+#                 response['success'] = True 
+#             except:
+#                 message = sys.exc_info()[1]
+#                 logger.error(sys.exc_info()[0])
+#                 logger.error(message)
+#                 traceback.print_tb(sys.exc_info()[2])
+#                 response['errors'].append(message)
 
-            # return redirect(f'transactionrulesets_list', tenant_id=tenant_id)
+#             # return redirect(f'transactionrulesets_list', tenant_id=tenant_id)
 
-        elif request.method == "POST":
+#         elif request.method == "POST":
                 
-            try:
+#             try:
 
-                transactionruleset_form.is_valid() 
-                transactionrule_formset.is_valid(preRuleSet=transactionruleset.id is None)
+#                 transactionruleset_form.is_valid() 
+#                 transactionrule_formset.is_valid(preRuleSet=transactionruleset.id is None)
 
-                transactionruleset = transactionruleset_form.save()
+#                 transactionruleset = transactionruleset_form.save()
 
-                # -- TODO: verify the is_valid() above actually does everything to ensure the save() below never, ever fails
-                # -- TODO: maybe do a match/replace only on the deleted/changed rules instead of deleting everything 
-                for transactionrule in transactionruleset.transactionrules.all():
-                    transactionrule.delete()
+#                 # -- TODO: verify the is_valid() above actually does everything to ensure the save() below never, ever fails
+#                 # -- TODO: maybe do a match/replace only on the deleted/changed rules instead of deleting everything 
+#                 for transactionrule in transactionruleset.transactionrules.all():
+#                     transactionrule.delete()
 
-                for form in transactionrule_formset:
-                    trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
-                    trf.is_valid()
-                    trf.save()
+#                 for form in transactionrule_formset:
+#                     trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
+#                     trf.is_valid()
+#                     trf.save()
                 
-                # -- create or update the prototransaction
+#                 # -- create or update the prototransaction
                 
-                transactionruleset.refresh_from_db()
+#                 transactionruleset.refresh_from_db()
 
-                records = transactionruleset.records(refresh=True)
-                records, removed = RecordGrouper.filter_accounted_records(
-                    records, 
-                    less_than_priority=transactionruleset.priority, 
-                    is_auto=False)
+#                 records = transactionruleset.records(refresh=True)
+#                 records, removed = RecordGrouper.filter_accounted_records(
+#                     records=records, 
+#                     less_than_priority=transactionruleset.priority, 
+#                     is_auto=False)
                 
-                stats = RecordGrouper.get_stats(records)
+#                 stats = RecordGrouper.get_stats(records)
 
-                proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
-                if proto_transaction:
-                    proto_transaction.name = transactionruleset.name
-                    proto_transaction.update_stats(stats)
-                    proto_transaction.save()
-                else:
-                    proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
+#                 proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
+#                 if proto_transaction:
+#                     proto_transaction.name = transactionruleset.name
+#                     proto_transaction.update_stats(stats)
+#                     proto_transaction.save()
+#                 else:
+#                     proto_transaction = ProtoTransaction.new_from(transactionruleset.name, stats, transactionruleset)
 
-                # transactionrule_formset.save() 
+#                 # transactionrule_formset.save() 
 
-                # -- breaking the formset and re-creating individual TransactionRuleForm was intended to inject the transactionruleset 
-                # -- which was previously not included in the formset fields 
-                # for form in transactionrule_formset:
+#                 # -- breaking the formset and re-creating individual TransactionRuleForm was intended to inject the transactionruleset 
+#                 # -- which was previously not included in the formset fields 
+#                 # for form in transactionrule_formset:
                     
-                    # logger.warning(f'checking TransactionRuleFormSet form data: {form.cleaned_data}')                    
-                    # if form.is_valid():
-                    #     trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
-                    #     if 'id' in form.cleaned_data and form.cleaned_data["id"]:
-                    #         logger.warning(f'creating form for existing transactionrule {form.cleaned_data["id"]}')
-                    #         trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset }, instance=TransactionRule.objects.get(pk=form.cleaned_data['id']))
-                    #     else:
-                    #         logger.warning(f'id not in TransactionRuleFormSet form cleaned data or is null, saving TransactionRuleForm with transactionruleset {transactionruleset}')                        
-                    #     trf.is_valid()
-                    #     trf.save()
+#                     # logger.warning(f'checking TransactionRuleFormSet form data: {form.cleaned_data}')                    
+#                     # if form.is_valid():
+#                     #     trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset })
+#                     #     if 'id' in form.cleaned_data and form.cleaned_data["id"]:
+#                     #         logger.warning(f'creating form for existing transactionrule {form.cleaned_data["id"]}')
+#                     #         trf = TransactionRuleForm({ **form.cleaned_data, 'transactionruleset': transactionruleset }, instance=TransactionRule.objects.get(pk=form.cleaned_data['id']))
+#                     #     else:
+#                     #         logger.warning(f'id not in TransactionRuleFormSet form cleaned data or is null, saving TransactionRuleForm with transactionruleset {transactionruleset}')                        
+#                     #     trf.is_valid()
+#                     #     trf.save()
                 
-                # return redirect("transactionrulesets_list", tenant_id=tenant_id)
+#                 # return redirect("transactionrulesets_list", tenant_id=tenant_id)
 
-                response['success'] = True 
+#                 response['success'] = True 
 
-            except ValidationError as ve:
-                error_type = sys.exc_info()[0]
-                logger.error(error_type)
-                message = str(sys.exc_info()[1])
-                logger.error(message)
-                response['form_errors'].append(f'{error_type.__name__}\n{message}')
-                traceback.print_tb(sys.exc_info()[2])
-            except:
-                error_type = sys.exc_info()[0]
-                logger.error(error_type)
-                message = str(sys.exc_info()[1])
-                logger.error(message)
-                response['match_errors'].append(f'{error_type.__name__}\n{message}')
-                traceback.print_tb(sys.exc_info()[2])
+#             except ValidationError as ve:
+#                 error_type = sys.exc_info()[0]
+#                 logger.error(error_type)
+#                 message = str(sys.exc_info()[1])
+#                 logger.error(message)
+#                 response['form_errors'].append(f'{error_type.__name__}\n{message}')
+#                 traceback.print_tb(sys.exc_info()[2])
+#             except:
+#                 error_type = sys.exc_info()[0]
+#                 logger.error(error_type)
+#                 message = str(sys.exc_info()[1])
+#                 logger.error(message)
+#                 response['match_errors'].append(f'{error_type.__name__}\n{message}')
+#                 traceback.print_tb(sys.exc_info()[2])
 
-            # for form in formset:
-            #     logger.warning(f'creating TransactionRule from {form.cleaned_data}')
-            #     transaction_rule = TransactionRule(**form.cleaned_data)
-            #     transaction_rule.transactionruleset = transactionruleset 
-            #     transaction_rule.save()
-    except:
-        message = f'{sys.exc_info[0].__name__}: {sys.exc_info()[1]}: failed creating initial tx ruleset form and rule formset'
-        response['errors'].append(message)
+#             # for form in formset:
+#             #     logger.warning(f'creating TransactionRule from {form.cleaned_data}')
+#             #     transaction_rule = TransactionRule(**form.cleaned_data)
+#             #     transaction_rule.transactionruleset = transactionruleset 
+#             #     transaction_rule.save()
+#     except:
+#         message = f'{sys.exc_info[0].__name__}: {sys.exc_info()[1]}: failed creating initial tx ruleset form and rule formset'
+#         response['errors'].append(message)
 
-    return JsonResponse(response)
+#     return JsonResponse(response)
 
-    if transactionruleset:
-        transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
+#     if transactionruleset:
+#         transactionruleset_form = TransactionRuleSetForm(instance=transactionruleset)
 
-    template_data = {
-        'transactionruleset_form': transactionruleset_form,
-        'recordfields': [ f.name for f in Record._meta.fields ],
-        'transactionrule_formset': transactionrule_formset,
-        'join_operators': TransactionRuleSet.join_operator_choices
-    }
+#     template_data = {
+#         'transactionruleset_form': transactionruleset_form,
+#         'recordfields': [ f.name for f in Record._meta.fields ],
+#         'transactionrule_formset': transactionrule_formset,
+#         'join_operators': TransactionRuleSet.join_operator_choices
+#     }
     
-    return render(request, "transactionruleset_edit.html", template_data)
+#     return render(request, "transactionruleset_edit.html", template_data)
 
 def transactionrulesets_auto(request, tenant_id):
 
@@ -669,7 +681,7 @@ def record_typing(request, tenant_id, search=None):
         template_models = [ {
             'id': p.id,
             'date': p.transaction_date, 
-            'account': p.uploaded_file.account_name,
+            'account': f'{p.uploaded_file.account_name()} {p.uploaded_file.account_number()}',
             'amount': p.amount,
             'description': p.description,
             'meta_description': p.meta_description,
@@ -689,7 +701,7 @@ def record_typing(request, tenant_id, search=None):
                 model['assoc'] = [ {
                         'id': assoc.id,
                         'date': assoc.transaction_date,
-                        'account': assoc.uploaded_file.account_name(),
+                        'account': f'{assoc.uploaded_file.account_name()} {assoc.uploaded_file.account_number()}',
                         'description': assoc.description,
                         'extra_fields': assoc.extra_fields,
                         'amount': assoc.amount,
@@ -717,16 +729,20 @@ def update_record_meta(request, tenant_id):
     }
 
     try:
+        logger.debug(f'updating record meta with POST {request.POST}')
+
         record_ids_raw = request.POST['record_ids']
         record_ids = [ int(id) for id in record_ids_raw.split(',') ]
 
         for record_id in record_ids:
             record = Record.objects.get(pk=record_id)
-            record_meta = RecordMeta.objects.filter(core_fields_hash=record.core_fields_hash).first()
+            record_meta = record.record_meta() 
             
             response['data']['original_record_type'] = record_meta.record_type 
             response['data']['original_description'] = record_meta.description 
             response['data']['original_event_id'] = record_meta.event_id
+            response['data']['original_vehicle_id'] = record_meta.vehicle_id
+            response['data']['original_property_id'] = record_meta.property_id
 
             assoc_record = None 
             assoc_record_meta = None 
@@ -734,34 +750,40 @@ def update_record_meta(request, tenant_id):
             record_type = request.POST['record_type']
             description = request.POST['description']
             event_id = request.POST['event_id']
+            vehicle_id = request.POST['vehicle_id']
+            property_id = request.POST['property_id']
 
             # -- always grab the associated record from the form
             # -- though it's only used when setting type as internal 
-            assoc_id_field_name = f'{record.id}-assoc_id'
+            assoc_id_field_name = 'assoc_record_id' # f'{record.id}-assoc_id'
 
             if assoc_id_field_name in request.POST:
                 assoc_id = request.POST[assoc_id_field_name]
                 if assoc_id:
                     assoc_record = Record.objects.get(pk=assoc_id)
-                    assoc_record_meta = RecordMeta.objects.filter(core_fields_hash=assoc_record.core_fields_hash).first()
+                    assoc_record_meta = assoc_record.record_meta()
         
             if record_type == RecordMeta.RECORD_TYPE_INTERNAL and not (assoc_record or assoc_record_meta):
-                response['messages'].append(f'Both records could not be found')
+                response['messages'].append(f'Setting as {record_type} -- Both records could not be found (assoc record is {assoc_record.id if assoc_record else "not found"}, assoc record meta is {assoc_record_meta.id if assoc_record_meta else "not found"})')
             
+            update_msgs = []
+
             if record_meta:   
                 record_meta.record_type = record_type
                 record_meta.description = description 
                 record_meta.event_id = event_id
+                record_meta.vehicle_id = vehicle_id
+                record_meta.property_id = property_id
                 record_meta.save()
+                update_msgs.append(f'record/meta {record.id}/{record_meta.id} type:{record_type},desc:{description},event:{event_id},vehicle:{vehicle_id},property:{property_id}')
 
-            if assoc_record_meta and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
+            if assoc_record_meta: # and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
                 assoc_record_meta.record_type = record_type 
                 assoc_record_meta.save()
+                update_msgs.append(f'assoc record/meta {assoc_record.id}/{assoc_record_meta.id} type:{record_type}')
 
-                response['messages'].append(f'Records {record.id} and {assoc_record.id} (meta {record_meta.id}, {assoc_record_meta.id}) type updated to {record_type}, {record.id} updated description to {description}, event to {event_id}')
-            else:
-                response['messages'].append(f'Record {record.id} meta ({record_meta.id}) updated to {record_type} / {description} / event {event_id}')
-            
+            response['messages'].append("/".join(update_msgs))
+
         response['success'] = True 
                 
     except:
@@ -793,36 +815,37 @@ def tracing(request, tenant_id):
 
     else:
 
-        record_base_fields = ['id', 'description', 'transaction_date', 'amount', 'meta_record_type', 'meta_description', 'core_fields_hash'] #, 'extra_fields_hash']
-        meta_base_fields = ['id', 'description', 'record_type', 'core_fields_hash'] #, 'extra_fields_hash']
+        record_base_fields = ['id', 'description', 'transaction_date', 'amount', 'meta_record_type', 'meta_description', 'core_fields_hash', 'raw_data_line_hash'] #, 'extra_fields_hash']
+        # meta_base_fields = ['id', 'description', 'record_type', 'core_fields_hash', 'raw_data_line_hash'] #, 'extra_fields_hash']
         core_fields = ['transaction_date', 'post_date', 'description', 'amount']
 
         
 
-        recordmeta_base_results = {
-            'header': meta_base_fields,
-            'records': [],
-            'matches': {
-                'core_matches': {
-                    'header': record_base_fields,
-                    'lookup': {}
-                }
-            }
-        }
+        # recordmeta_base_results = {
+        #     'header': meta_base_fields,
+        #     'records': [],
+        #     'matches': {
+        #         'core_matches': {
+        #             'header': record_base_fields,
+        #             'lookup': {}
+        #         }
+        #     }
+        # }
 
-        metas = RecordMeta.objects.filter(core_fields_hash__isnull=False)
+        # metas = RecordMeta.objects.filter(core_fields_hash__isnull=False)
 
-        for meta in metas:
+        # for meta in metas:
 
-            recordmeta_base_results['matches']['core_matches']['lookup'][meta.id] = []
+        #     recordmeta_base_results['matches']['core_matches']['lookup'][meta.id] = []
             
-            core_matches = [ _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(core_fields_hash=meta.core_fields_hash) ]
+        #     # - RecordMeta self-matching on a field that is highly likely unique?
+        #     core_matches = [ _base_fields(r, meta_base_fields) for r in RecordMeta.objects.filter(core_fields_hash=meta.core_fields_hash) ]
             
-            if len(core_matches) > 1:
-                recordmeta_base_results['matches']['core_matches']['lookup'][meta.id] = core_matches
-                recordmeta_base_results['records'].append(_base_fields(meta, meta_base_fields))
+        #     if len(core_matches) > 1:
+        #         recordmeta_base_results['matches']['core_matches']['lookup'][meta.id] = core_matches
+        #         recordmeta_base_results['records'].append(_base_fields(meta, meta_base_fields))
             
-        results['recordmeta_base_results'] = recordmeta_base_results
+        # results['recordmeta_base_results'] = recordmeta_base_results
         
         record_base_results = {
             'header': record_base_fields,
@@ -1073,8 +1096,10 @@ def reprocess_files(request, tenant_id, action, uploadedfile_id=None):
         'cleanup': cleanup_file
     }
 
-    for f in files:        
-        file_action_map[action](f)
+    # -- we don't want any endpoint that wipes all records, txbb
+    if action != 'cleanup' or uploadedfile_id:
+        for f in files:        
+            file_action_map[action](f)
     
     return redirect("files", tenant_id=tenant_id)
 

@@ -188,7 +188,7 @@
                 <th>Started</th>
                 <th>Ended</th>
                 <th>Records</th>
-                <th>Total</th>
+                <th>Total *</th>
                 <th></th>
             </tr>
     {% for event in events %}
@@ -208,6 +208,12 @@
 
     {% endfor %}
     </table>
+    <div class="col-4">
+        <small>
+        * - values shown here rely on backtracing through a non-distinct record fingerprint which possibly results in capturing more records than were originally tagged for this event. note that while this sounds scary, a record fingerprint is distinct for a transaction date, exact description text, and amount, so the additional unintended records very likely should be associated with the same event anyway. the process of backtracing also deduplicates the set of records collected, meaning if multiple records with the same fingerprint were actually tagged for the event and the non-distinct collection pooled the same record multiple times, we don't sum those amounts multiple times.
+        </small>
+    </div>
+
 </div>
 
 {% endblock %}

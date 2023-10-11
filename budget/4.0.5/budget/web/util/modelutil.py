@@ -1,9 +1,16 @@
 import logging 
+import hashlib
+import simplejson as json 
 
 logger = logging.getLogger(__name__)
 
 def choiceify(choices):
     return tuple([ [c, f'{c[0].upper()}{c[1:]}'] for c in choices ])
+
+def record_hash(val_or_dict):
+    return hashlib.md5(            
+            json.dumps(val_or_dict, sort_keys=True, ensure_ascii=True, use_decimal=True).encode('utf-8')
+        ).hexdigest()
 
 class TransactionTypes(object):
 
@@ -48,9 +55,39 @@ class TransactionTypes(object):
     PERIOD_SEMIANNUALLY = 'semiannually'
     PERIOD_SEVEN_TO_TWELVE_MONTHS = 'seven-to-twelve-months'
     PERIOD_YEARLY = 'yearly'
+    PERIOD_THIRTEEN_TO_TWENTY_THREE_MONTHS = 'thirteen-to-twenty-three-months'
+    PERIOD_BIENNIALLY = 'biennial'
     PERIOD_INACTIVE = 'inactive'
 
-    PERIOD_LOOKUP = {
+    PERIODS = {
+        1: PERIOD_DAILY, 
+        7: PERIOD_WEEKLY, 
+        14: PERIOD_BIWEEKLY, 
+        30: PERIOD_MONTHLY, 
+        60: PERIOD_TWO_MONTHS,
+        90: PERIOD_QUARTERLY,         
+        150: PERIOD_FOUR_TO_SIX_MONTHS,
+        182: PERIOD_SEMIANNUALLY, 
+        282: PERIOD_SEVEN_TO_TWELVE_MONTHS,
+        365: PERIOD_YEARLY,
+        565: PERIOD_THIRTEEN_TO_TWENTY_THREE_MONTHS,
+        730: PERIOD_BIENNIALLY
+    }    
+
+    AVERAGING_PERIOD_LOOKUP = {
+        PERIOD_DAILY: PERIOD_MONTHLY,
+        PERIOD_WEEKLY: PERIOD_TWO_MONTHS,
+        PERIOD_BIWEEKLY: PERIOD_QUARTERLY,
+        PERIOD_MONTHLY: PERIOD_FOUR_TO_SIX_MONTHS,
+        PERIOD_TWO_MONTHS: PERIOD_SEMIANNUALLY,
+        PERIOD_QUARTERLY: PERIOD_YEARLY,
+        PERIOD_FOUR_TO_SIX_MONTHS: PERIOD_BIENNIALLY,
+        PERIOD_SEMIANNUALLY: PERIOD_BIENNIALLY,
+        PERIOD_SEVEN_TO_TWELVE_MONTHS: PERIOD_BIENNIALLY,
+        PERIOD_YEARLY: PERIOD_BIENNIALLY
+    }
+
+    PERIOD_TIMING_BINS_LOOKUP = {
         0: PERIOD_DAILY, # -- start of daily
         5: PERIOD_WEEKLY, # -- start of weekly
         10: PERIOD_BIWEEKLY, # -- start of bi-weekly
@@ -61,7 +98,9 @@ class TransactionTypes(object):
         160: PERIOD_SEMIANNUALLY, # -- start of semi-annually
         200: PERIOD_SEVEN_TO_TWELVE_MONTHS,
         300: PERIOD_YEARLY, # -- start of annually
-        400: PERIOD_INACTIVE 
+        430: PERIOD_THIRTEEN_TO_TWENTY_THREE_MONTHS,
+        700: PERIOD_BIENNIALLY, # -- start of biennial
+        760: PERIOD_INACTIVE 
     }
 
     timing_choices = choiceify([TRANSACTION_TIMING_PERIODIC, TRANSACTION_TIMING_CHAOTIC_FREQUENT, TRANSACTION_TIMING_CHAOTIC_RARE, TRANSACTION_TIMING_SINGLE])
@@ -70,7 +109,21 @@ class TransactionTypes(object):
     tax_category_choices = choiceify([TAX_CATEGORY_NONE, TAX_CATEGORY_TAX, TAX_CATEGORY_UTILITY, TAX_CATEGORY_REPAIR, TAX_CATEGORY_MAINTENANCE, TAX_CATEGORY_INSURANCE])
 
     @staticmethod
-    def period_reverse_lookup(v):
-        lookup = { TransactionTypes.PERIOD_LOOKUP[v]: v for v in TransactionTypes.PERIOD_LOOKUP.keys() }
-        return lookup[v]
+    def next_period_lookup(period):
+        curr_days = TransactionTypes.period_days_lookup(period)
+        next_days = None 
+        for d in TransactionTypes.PERIODS.keys():
+            if d <= curr_days:
+                continue 
+            if not next_days:
+                next_days = d 
+                continue 
+            if d - curr_days < next_days - curr_days:
+                next_days = d 
+        return TransactionTypes.PERIODS[next_days]            
+    
+    @staticmethod
+    def period_days_lookup(period):
+        lookup = { TransactionTypes.PERIODS[d]: d for d in TransactionTypes.PERIODS.keys() }
+        return lookup[period]
         

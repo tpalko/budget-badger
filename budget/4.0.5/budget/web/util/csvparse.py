@@ -27,7 +27,7 @@ def _stepwise(items, start=0, step=1, take=1):
         yield ret 
 
 # '"Transaction Type"', '"Date"', '"Account Type"', '"Description"', '"Amount"', '"Reference No."', '"Credits"', '"Debits"']
-def get_records_from_csv(data, columns, header_included):
+def get_record_dicts_and_raw_data_lines_from_csv(data, columns, header_included):
     '''
     08/24/2022,APPLE.COM/BILL      INTERNET CHARGE     CA,5.34,"MM23Q73L5ZA RECORD STORE
     APPLE.COM/BILL
@@ -63,6 +63,8 @@ def get_records_from_csv(data, columns, header_included):
             quotepairs = [ (l, r,) for l, r in _stepwise(_findstarts(line, '"'), take=2) ]
             items = []
             lastcomma = 0
+            # -- by this point we have accumulated sufficient characters and fields to fill our columns
+            raw_data_line = line 
             for comma in commas:
                 # -- and ignore the commas within them 
                 if _betweens(comma, quotepairs):
@@ -73,10 +75,14 @@ def get_records_from_csv(data, columns, header_included):
                 next_item = next.replace('"', '')
                 # logger.debug(f'next item: {next_item}')
                 items.append(next_item)
+            # -- this assumes any leftover before the CR constitutes a full column of data (columns do not wrap across CRs)
             items.append(line[lastcomma:].strip())
             if any(items):
                 logger.debug(f'adding {",".join(items)} as a record')
-                records.append(dict(zip(columns, items)))
+                records.append({
+                    'record_dict': dict(zip(columns, items)),
+                    'raw_data_line': raw_data_line
+                })
             else:
                 logger.debug(f'no items found on this line')
             line = ""

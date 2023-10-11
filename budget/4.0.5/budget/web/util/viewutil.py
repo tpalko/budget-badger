@@ -6,7 +6,8 @@ from web.util.recordgrouper import RecordGrouper
 from web.util.modelutil import TransactionTypes
 from django.core.exceptions import ValidationError
 from django.db.models import Q
-from web.util.csvparse import get_records_from_csv
+from web.util.csvparse import get_record_dicts_and_raw_data_lines_from_csv
+from web.util.modelutil import record_hash
 from web.models import Account, CreditCard, UploadedFile, Record, Transaction, RecordFormat, TransactionRuleSet, TransactionRule, ProtoTransaction
 from web.forms import RecordForm, TransactionRuleForm, TransactionRuleSetForm, new_transaction_rule_form_set
 
@@ -129,32 +130,35 @@ def get_heatmap_data(filtered_records):
     date_list = [ r.transaction_date for r in filtered_records ]
     
     day_list = [ d.day for d in date_list ]
-    month_list = [ d.month for d in date_list ]
-    weekdays = [ datetime.strftime(d, "%a") for d in date_list ]
+    month_list = [ datetime.strftime(d, "%b") for d in date_list ]
+    weekday_list = [ datetime.strftime(d, "%a") for d in date_list ]
 
     month_heatmap = { m: month_list.count(m) for m in set(month_list) }
+    month_heatmap_normalized = { m: nearest_whole(month_heatmap[m]*100.0/len(filtered_records)) for m in month_heatmap }
 
-    weekday_heatmap = { j: weekdays.count(j) for j in set(weekdays) }
+    weekday_heatmap = { j: weekday_list.count(j) for j in set(weekday_list) }
     weekday_heatmap_normalized = { j: nearest_whole(weekday_heatmap[j]*100.0/len(filtered_records)) for j in weekday_heatmap }
-
     
     day_set = list(set(day_list))
     day_set.sort()
-    heatmap = { str(day): day_list.count(day) for day in day_set }
-    
-    heatmap_normalized = { n: nearest_whole(heatmap[n]*100.0/len(filtered_records)) for n in heatmap }
+    day_heatmap = { str(day): day_list.count(day) for day in day_set }    
+    day_heatmap_normalized = { n: nearest_whole(day_heatmap[n]*100.0/len(filtered_records)) for n in day_heatmap }
 
-    heatmap_region_lookup = _get_heatmap_region_lookup(heatmap, heatmap_normalized)
+    day_heatmap_region_lookup = _get_heatmap_region_lookup(day_heatmap, day_heatmap_normalized)
 
-    all_weekdays = [ datetime.strftime(datetime.strptime(str(0), "%w") + timedelta(days=w), "%a") for w in range(7) ]
+    all_weekdays = [ datetime.strftime(datetime.strptime("0", "%w") + timedelta(days=w), "%a") for w in range(7) ]
+    all_months = [ datetime.strftime(datetime.strptime(f'{0 if m + 1 < 10 else ""}{m + 1}', "%m"), "%b") for m in range(12) ]
 
     return {
-        'heatmap_normalized': heatmap_normalized,
-        'heatmap': heatmap,
-        'heatmap_region_lookup': heatmap_region_lookup,
+        'day_heatmap_normalized': day_heatmap_normalized,
+        'day_heatmap': day_heatmap,
+        'day_heatmap_region_lookup': day_heatmap_region_lookup,
         'weekday_heatmap': weekday_heatmap,
         'weekday_heatmap_normalized': weekday_heatmap_normalized,
-        'all_weekdays': all_weekdays
+        'month_heatmap': month_heatmap,
+        'month_heatmap_normalized': month_heatmap_normalized,
+        'all_weekdays': all_weekdays,
+        'all_months': all_months
     }
 
 # def get_recordgroup_data():
@@ -249,14 +253,17 @@ def handle_transaction_rule_form_request(request, transactionruleset_id=None):
     return False, transactionruleset_form, transactionrule_formset
 
 def refresh_prototransaction(transactionruleset):
-    records = transactionruleset.records(refresh=True)
+
+    stats = RecordGrouper.get_all_stats_for_rule_set(transactionruleset)
+
+    # records = transactionruleset.records(refresh=True)
     
-    records, removed = RecordGrouper.filter_accounted_records(
-        records, 
-        less_than_priority=transactionruleset.priority, 
-        is_auto=False)
+    # records, removed = RecordGrouper.filter_accounted_records(
+    #     records=records, 
+    #     less_than_priority=transactionruleset.priority, 
+    #     is_auto=False)
     
-    stats = RecordGrouper.get_stats(records)
+    # stats = RecordGrouper.get_stats(records)
 
     proto_transaction = ProtoTransaction.objects.filter(transactionruleset=transactionruleset).first()
     if proto_transaction:
@@ -360,9 +367,51 @@ def coverage_brackets():
 
 def get_ruleset_breakout(transactionrulesets_manual):
 
-    credit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.monthly_earn is not None and rs.prototransaction.monthly_spend is not None and abs(rs.prototransaction.monthly_earn) > abs(rs.prototransaction.monthly_spend) ]
-    debit_rulesets = [ rs for rs in transactionrulesets_manual if rs.prototransaction_safe() and rs.prototransaction.monthly_earn is not None and rs.prototransaction.monthly_spend is not None and abs(rs.prototransaction.monthly_earn) < abs(rs.prototransaction.monthly_spend) ]
-    nostat_rulesets = [ rs for rs in transactionrulesets_manual if rs.id not in [ r.id for r in credit_rulesets ] and rs.id not in [ r.id for r in debit_rulesets ] ]
+    credit_rulesets = []
+    debit_rulesets = []
+    nostat_rulesets = []
+
+    for rs in transactionrulesets_manual:
+
+        if not rs.prototransaction_safe() or not rs.prototransaction.is_active():
+            nostat_rulesets.append(rs)
+            continue 
+                        
+        credit_avg = abs(rs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_CREDIT) or 0)
+        debit_avg = abs(rs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_DEBIT) or 0)
+
+        # if 'credit' in rs.prototransaction.stats:
+        #     if 'average_for_month' in rs.prototransaction.stats['credit']:
+        #         credit_avg = abs(rs.prototransaction.stats['credit']['average_for_month']) or 0
+        # if 'debit' in rs.prototransaction.stats:
+        #     if 'average_for_month' in rs.prototransaction.stats['debit']:
+        #         debit_avg = abs(rs.prototransaction.stats['debit']['average_for_month']) or 0
+        if credit_avg > debit_avg:
+            credit_rulesets.append(rs)
+        elif debit_avg > credit_avg:
+            debit_rulesets.append(rs)
+        else:
+            nostat_rulesets.append(rs)
+
+
+    # credit_rulesets = [ rs for rs in transactionrulesets_manual 
+    #                    if rs.prototransaction_safe() 
+    #                    and 'average_for_month' in rs.prototransaction.stats['credit'] 
+    #                    and 'average_for_month' in rs.prototransaction.stats['debit'] 
+    #                    and rs.prototransaction.stats['credit']['average_for_month'] is not None 
+    #                    and rs.prototransaction.stats['debit']['average_for_month'] is not None 
+    #                    and abs(rs.prototransaction.stats['credit']['average_for_month']) > abs(rs.prototransaction.stats['debit']['average_for_month']) 
+    # ]
+    # debit_rulesets = [ rs for rs in transactionrulesets_manual 
+    #                   if rs.prototransaction_safe() 
+    #                     and 'average_for_month' in rs.prototransaction.stats['credit'] 
+    #                     and 'average_for_month' in rs.prototransaction.stats['debit'] 
+    #                     and rs.prototransaction.stats['credit']['average_for_month'] is not None 
+    #                     and rs.prototransaction.stats['debit']['average_for_month'] is not None 
+    #                     and abs(rs.prototransaction.stats['credit']['average_for_month']) < abs(rs.prototransaction.stats['debit']['average_for_month']) 
+    # ]
+    # nostat_rulesets = [ rs for rs in transactionrulesets_manual 
+    #                    if rs.id not in [ r.id for r in credit_rulesets ] and rs.id not in [ r.id for r in debit_rulesets ] ]
 
     return {
         'credit_stats': ruleset_stats(credit_rulesets),
@@ -374,8 +423,8 @@ def get_ruleset_breakout(transactionrulesets_manual):
 
 def ruleset_stats(rulesets):
     
-    total_earn = sum([ transactionruleset.prototransaction_safe().monthly_earn or 0 for transactionruleset in rulesets if transactionruleset.prototransaction_safe() and transactionruleset.prototransaction.is_active ])
-    total_spend = sum([ transactionruleset.prototransaction_safe().monthly_spend or 0 for transactionruleset in rulesets if transactionruleset.prototransaction_safe() and transactionruleset.prototransaction.is_active ])
+    total_earn = sum([ (trs.prototransaction_safe() and trs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_CREDIT)) or 0 for trs in rulesets if trs.prototransaction.is_active ])
+    total_spend = sum([ (trs.prototransaction_safe() and trs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_DEBIT)) or 0 for trs in rulesets if trs.prototransaction.is_active ])
     total_records = sum([ len(transactionruleset.records(refresh=True)) for transactionruleset in rulesets if transactionruleset.prototransaction_safe() and transactionruleset.prototransaction.is_active ])
 
     return {
@@ -472,21 +521,22 @@ def _process_records(records, csv_date_format, flow_convention):
     # -- parse date strings into Date objects or float values from strings 
     # -- we expand everything we got (i.e. CSV columns)
     # -- and overwrite the only non-FK Record fields with massaged values     
-    records = [ {
-        **record,
-        'description': record['description'].replace('\t', '') if 'description' in record else record['name'].replace('\t', ''),
-        'transaction_date': datetime.strptime(record['transaction_date'], csv_date_format) if 'transaction_date' in record else datetime.strptime(record['date'], csv_date_format),
-        'post_date': datetime.strptime(record['post_date'] if 'post_date' in record else record['date'] if 'date' in record else record['posting_date'], csv_date_format),
-        'amount': _must_amount(record, flow_convention)        
-    } for record in records if 'status' not in record or record['status'].lower() != "pending" ]
+    processed_records = [ {
+        **record['record_dict'],
+        'description': record['record_dict']['description'].replace('\t', '') if 'description' in record['record_dict'] else record['record_dict']['name'].replace('\t', ''),
+        'transaction_date': datetime.strptime(record['record_dict']['transaction_date'], csv_date_format) if 'transaction_date' in record['record_dict'] else datetime.strptime(record['record_dict']['date'], csv_date_format),
+        'post_date': datetime.strptime(record['record_dict']['post_date'] if 'post_date' in record['record_dict'] else record['record_dict']['date'] if 'date' in record['record_dict'] else record['record_dict']['posting_date'], csv_date_format),
+        'amount': _must_amount(record['record_dict'], flow_convention),
+        'raw_data_line': record['raw_data_line']
+    } for record in records if 'status' not in record['record_dict'] or record['record_dict']['status'].lower() != "pending" ]
 
     # -- just more conditional post-processing
-    for record in records:
+    for processed_record in processed_records:
         for float_potential in ['credits', 'debits']:
-            if float_potential in record:
-                record[float_potential] = _floatify(record[float_potential])
+            if float_potential in processed_record:
+                processed_record[float_potential] = _floatify(processed_record[float_potential])
     
-    return records 
+    return processed_records 
 
 def process_file(uploadedfile):
     details = process_uploaded_file(uploadedfile)    
@@ -532,7 +582,9 @@ def process_uploaded_file(uploaded_file):
 
     try:
         # -- do a little preprocessing so we can avoid duplicating uploaded files 
-        raw_records = get_records_from_csv(file_contents, this_format.csv_columns.split(','), uploaded_file.header_included)
+        # -- the existence of a composite object with the record information + the raw data line exists only between these
+        # -- two function calls.. after _process_records() we have pure Record type dicts
+        raw_records = get_record_dicts_and_raw_data_lines_from_csv(file_contents, this_format.csv_columns.split(','), uploaded_file.header_included)
         records = _process_records(raw_records, this_format.csv_date_format, this_format.flow_convention)
     except:      
         error_msg = f'{sys.exc_info()[0]} {sys.exc_info()[1]}'
@@ -568,10 +620,37 @@ def save_processed_records(records, uploadedfile):
 
         try:
 
+            found_by_raw_data_line = Record.objects.filter(raw_data_line=record['raw_data_line']).first()
+            found_by_raw_data_line_hash = Record.objects.filter(raw_data_line_hash=record_hash(record['raw_data_line'])).first()
+
+            was_found_by_raw_data_line = False 
+
+            if found_by_raw_data_line:
+                was_found_by_raw_data_line = True 
+                logger.info(f'Found existing records based on the raw data line: {found_by_raw_data_line.id}')                
+            if found_by_raw_data_line_hash:
+                was_found_by_raw_data_line = True 
+                logger.info(f'Found existing records based on the HASHED raw data line: {found_by_raw_data_line_hash.id}')
+
+            if was_found_by_raw_data_line:
+                continue 
+
+            # potential_record_form = RecordForm(record)
+            
             # -- the filter will not find database records unless the types match exactly
             lookup_dict = { 
-                f: Decimal(str(record[f])) if f == 'amount' else datetime.strftime(record[f], '%Y-%m-%d') if f.find('_date') > 0 else record[f] for f in ['transaction_date', 'post_date', 'description', 'amount']
+                f: Decimal(str(record[f])) if f == 'amount' 
+                    else datetime.strftime(record[f], '%Y-%m-%d') if f.find('_date') > 0 
+                    else record[f] 
+                for f in ['transaction_date', 'post_date', 'description', 'amount']
             }
+
+            # extra_fields_lookups = {
+            #     f'extra_fields__{f}': potential_record_form.instance.extra_fields[f]
+            #     for f in potential_record_form.instance.extra_fields.keys()
+            # }
+
+            # lookup_dict.update(extra_fields_lookups)
 
             # lookup_dict = { 
             #     f: record[f] 
@@ -584,8 +663,27 @@ def save_processed_records(records, uploadedfile):
             db_records = Record.objects.filter(**lookup_dict) # transaction_date=record['transaction_date'], post_date=record['post_date'], description=record['description'], amount=Decimal(record['amount']))
 
             if len(db_records) > 0:
-                logger.info(f'saving record, but {len(db_records)} match(es) ({",".join([ str(r.id) for r in db_records ]) }) found for {record}')
-                continue 
+                logger.info(f'will attempt record validate and save, but {len(db_records)} match(es) ({",".join([ str(r.id) for r in db_records ]) }) found for {record}')
+                # -- if there is only one, we can assume the incoming raw data line is actually this one 
+                # if len(db_records) == 1:
+                #     logger.warning(f'single core fields match record {db_records[0].id} already has raw_data_line: {db_records[0].raw_data_line}')
+                #     if not db_records[0].raw_data_line:
+                #         logger.warning(f'single core fields match record {db_records[0].id} no raw_data_line, setting to {record["raw_data_line"]}')
+                #         db_records[0].raw_data_line = record['raw_data_line']
+                #     logger.warning(f'saving single core fields match record {db_records[0].id}')
+                #     db_records[0].save()
+                # else:
+                #     logger.warning(f'MULTIPLE_CORE_FIELDS_MATCH_TO_ONE_RAW_LINE')
+                #     for db_record in db_records:
+                #         logger.warning(f'checking extra fields between {db_record.extra_fields} and incoming {record}')
+                #         extra_field_matches = [ ef in record and record[ef] == db_record.extra_fields[ef] for ef in db_record.extra_fields.keys() ]
+                #         if all(extra_field_matches):
+                #             logger.warning(f'all extra fields matched, setting raw_data_line here')
+                #             db_record.raw_data_line = record['raw_data_line']
+                #             db_record.save()                            
+                #         else:
+                #             logger.warning(f'not all extra fields matched')                        
+                # continue 
 
             record_data = { 
                 **record, 

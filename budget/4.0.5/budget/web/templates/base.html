@@ -30,9 +30,11 @@
 	</div>
     <div class="row">
         <div class="col-16">            
+            <!--
             Total expense: $100 (87% accounted, 12 records unaccounted)
             Total income: $100 (91% accounted, 9 records unaccounted)
             21% contiguous, March 12, 2023 - August 19, 2023 (152 days)                        
+            -->
         </div>
     </div>
 	<div class="row">
@@ -94,13 +96,15 @@
     }
 
     function setRecordTypeSelectListener() {
-        document.querySelectorAll("form.record_meta").forEach((e, i) => {
+        console.debug('selecting all form.record_meta for submit handling')
+        document.querySelectorAll("form.record_meta").forEach((e, i) => {            
             console.debug('catching submit for ' + e);
             e.addEventListener("submit", handleRecordMetaFormSubmit);
         })        
     }
 
     document.addEventListener('DOMContentLoaded', function(e) {
+        console.debug('dom loaded - calling setRecordTypeSelectListener')
 		setRecordTypeSelectListener();
     });
 

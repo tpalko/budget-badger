@@ -1,3 +1,4 @@
+import simplejson as json
 from django import template
 from django.utils.safestring import mark_safe
 from web.models import Record 
@@ -7,6 +8,24 @@ import logging
 logger = logging.getLogger(__name__)
 
 register = template.Library()
+
+@register.filter()
+def json_format(j):
+	return json.dumps(j, indent=4).replace(',', ',<br />').replace('{', '{<br />&nbsp;&nbsp;').replace('}', '<br />&nbsp&nbsp}')
+
+@register.filter()
+def call(obj, args):
+	args = args.split(',')
+	fn = getattr(obj, args[0])
+	return fn(*args[1:])
+
+@register.filter()
+def monthlynonzeroslice(monthlies, key): #, sliceparts="0,0"):
+	sliceparts="0,0"
+	start_index = int(sliceparts.split(',')[0])
+	end_index = int(sliceparts.split(',')[1])
+
+	return [ m for m in monthlies if m[key] != 0 ][start_index:end_index]
 
 @register.filter()
 def mult(a, b):
@@ -20,7 +39,10 @@ def sum_numbers(numbers):
 def meta_to_record(recordmetas):
 	records = []
 	for m in recordmetas:
-		records.append(Record.objects.filter(core_fields_hash=m.core_fields_hash).first())
+		found_records = m.records()
+		for found_record in found_records:
+			if found_record and found_record.id not in [ r.id for r in records ]:
+				records.append(found_record)
 	return records
 
 @register.filter()

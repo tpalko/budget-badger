@@ -5,7 +5,23 @@
 
 <div class="row">
     <div class="col-16">
-        <h3>{% if transactionruleset_form.id.value %}Edit{% else %}New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}{{ transactionruleset_form.id.value }}{% endif %}</h3>
+        <h3>{% if transactionruleset_form.id.value %}Editing{% else %}Creating New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}"{{ transactionruleset_form.name.value }}"{% endif %}</h3>
+        <div>
+            {% if transactionruleset_form.instance %}
+                credit:                 
+                {% if transactionruleset_form.instance.prototransaction.stats.credit.average_for_month %}
+                    avg/mo: {{ transactionruleset_form.instance.prototransaction.stats.credit.average_for_month }}
+                {% else %}
+                    msg: {{ transactionruleset_form.instance.prototransaction.stats.credit.messages }}
+                {% endif %}
+                debit: 
+                {% if transactionruleset_form.instance.prototransaction.stats.debit.average_for_month %}
+                    avg/mo: {{ transactionruleset_form.instance.prototransaction.stats.debit.average_for_month }}
+                {% else %}
+                    msg: {{ transactionruleset_form.instance.prototransaction.stats.debit.messages }}
+                {% endif %}
+            {% endif %}
+        </div>
         <div id="form_errors"></div>
     </div>
 </div>

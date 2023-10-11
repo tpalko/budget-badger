@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <h3>{{ ruleset.name }}</h3>
+        
+            {{ ruleset.prototransaction.stats|json_format|safe }}
+        
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+<script language="javascript">    
+    document.addEventListener("DOMContentLoaded", (e) => {
+
+    })
+</script>
+{% endblock %}
