@@ -373,25 +373,45 @@ def get_ruleset_breakout(transactionrulesets_manual):
 
     for rs in transactionrulesets_manual:
 
-        if not rs.prototransaction_safe() or not rs.prototransaction.is_active():
+        if not rs.prototransaction_safe():
             nostat_rulesets.append(rs)
             continue 
-                        
-        credit_avg = abs(rs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_CREDIT) or 0)
-        debit_avg = abs(rs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_DEBIT) or 0)
 
+        if rs.prototransaction.direction == ProtoTransaction.DIRECTION_CREDIT:
+            credit_rulesets.append(rs)
+        elif rs.prototransaction.direction == ProtoTransaction.DIRECTION_DEBIT:
+            debit_rulesets.append(rs)
+        elif rs.prototransaction.direction == ProtoTransaction.DIRECTION_BIDIRECTIONAL:
+            if rs.prototransaction.force_direction() == ProtoTransaction.DIRECTION_CREDIT:
+                credit_rulesets.append(rs)
+            else:
+                credit_rulesets.append(rs)
+        else:
+            nostat_rulesets.append(rs)
+            
         # if 'credit' in rs.prototransaction.stats:
         #     if 'average_for_month' in rs.prototransaction.stats['credit']:
         #         credit_avg = abs(rs.prototransaction.stats['credit']['average_for_month']) or 0
         # if 'debit' in rs.prototransaction.stats:
         #     if 'average_for_month' in rs.prototransaction.stats['debit']:
         #         debit_avg = abs(rs.prototransaction.stats['debit']['average_for_month']) or 0
-        if credit_avg > debit_avg:
-            credit_rulesets.append(rs)
-        elif debit_avg > credit_avg:
-            debit_rulesets.append(rs)
-        else:
-            nostat_rulesets.append(rs)
+        # if rs.direction == ProtoTransaction.DIRECTION_UNSET or rs.direction == ProtoTransaction.DIRECTION_BIDIRECTIONAL:
+
+        #     credit_avg = abs(rs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_CREDIT) or 0)
+        #     debit_avg = abs(rs.prototransaction.average_for_month(ProtoTransaction.DIRECTION_DEBIT) or 0)
+
+        #     if credit_avg > debit_avg:
+        #         credit_rulesets.append(rs)
+        #     elif debit_avg > credit_avg:
+        #         debit_rulesets.append(rs)
+        #     else:
+        #         nostat_rulesets.append(rs)
+        # else:
+
+        #     if rs.direction == ProtoTransaction.DIRECTION_CREDIT:
+        #         credit_rulesets.append(rs)
+        #     elif rs.direction == ProtoTransaction.DIRECTION_DEBIT:
+        #         debit_rulesets.append(rs)
 
 
     # credit_rulesets = [ rs for rs in transactionrulesets_manual 

@@ -7,6 +7,17 @@
     <div class="col-16">
         <h3>{% if transactionruleset_form.id.value %}Editing{% else %}Creating New{% endif %} Transaction Rule Set {% if transactionruleset_form.id.value %}"{{ transactionruleset_form.name.value }}"{% endif %}</h3>
         <div>
+            <a href="{% url "transactionruleset" tenant_id=1 transactionruleset_id=transactionruleset_form.instance.id %}">manage rule set</a>
+        </div>        
+        {% if transactionruleset_form.instance.prototransaction %}
+        <div>
+            <a href="{% url "prototransaction_edit" tenant_id=1 prototransaction_id=transactionruleset_form.instance.prototransaction.id %}">edit prototransaction</a>
+        </div>
+        {% endif %}
+        <div>
+            <a href="{%  url "transactionrulesets_list" tenant_id=1 %}">rule sets</a>
+        </div>
+        <div>
             {% if transactionruleset_form.instance %}
                 credit:                 
                 {% if transactionruleset_form.instance.prototransaction.stats.credit.average_for_month %}

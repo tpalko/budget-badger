@@ -383,6 +383,8 @@ class ProtoTransaction(BaseModel):
 
     DIRECTION_CREDIT = 'credit'
     DIRECTION_DEBIT = 'debit'
+    DIRECTION_BIDIRECTIONAL = 'bidirectional'
+    DIRECTION_UNSET = 'unset'
 
     EXCLUDE_STAT_FIELDS = ['record_count', 'record_ids']
 
@@ -410,6 +412,7 @@ class ProtoTransaction(BaseModel):
     recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
 
     criticality = models.CharField(max_length=20, choices=choiceify([CRITICALITY_FLEXIBLE, CRITICALITY_NECESSARY, CRITICALITY_OPTIONAL]), null=False, default=CRITICALITY_OPTIONAL)
+    direction = models.CharField(max_length=20, choices=choiceify([DIRECTION_CREDIT, DIRECTION_DEBIT, DIRECTION_BIDIRECTIONAL, DIRECTION_UNSET]), null=False, default=DIRECTION_UNSET)
 
     # -- stats contains 'debit' and 'credit', each of which have 'average_for_period' and 'average_for_month'    
     stats = models.JSONField(null=True)
@@ -418,6 +421,12 @@ class ProtoTransaction(BaseModel):
         return ('is_active' in self.stats['debit'] and self.stats['debit']['is_active']) \
             or ('is_active' in self.stats['credit'] and self.stats['credit']['is_active'])
 
+    def force_direction(self):
+        credit_avg = abs(self.average_for_month(ProtoTransaction.DIRECTION_CREDIT) or 0)
+        debit_avg = abs(self.average_for_month(ProtoTransaction.DIRECTION_DEBIT) or 0)
+
+        return ProtoTransaction.DIRECTION_CREDIT if credit_avg > debit_avg else ProtoTransaction.DIRECTION_DEBIT
+        
     def average_for_month(self, direction):
         if direction in self.stats and 'average_for_month' in self.stats[direction]:
             return self.stats[direction]['average_for_month']

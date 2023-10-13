@@ -5,7 +5,7 @@ from django.forms import Form, ModelChoiceField, ModelForm, HiddenInput, CharFie
 from django.forms.models import modelformset_factory, BaseModelFormSet
 from django.core.exceptions import ValidationError
 from django.utils.translation import gettext_lazy as _
-from web.models import BaseModel, Vehicle, Event, Settings, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
+from web.models import BaseModel, ProtoTransaction, Vehicle, Event, Settings, UtilityTransaction, TransactionRule, TransactionRuleSet, RecordFormat, CreditCard, Record, Property, UploadedFile, Account, Transaction, RecurringTransaction, CreditCardExpense, SingleTransaction, CreditCardTransaction, DebtTransaction
 import logging 
 import web.util.dates as utildates
 from web.util.modelutil import TransactionTypes, choiceify
@@ -71,7 +71,13 @@ class TransactionRuleForm(ModelForm):
         if 'match_value' in self.cleaned_data and 'match_operator' in self.cleaned_data and self.cleaned_data['match_operator'] not in [TransactionRule.MATCH_OPERATOR_LT_HUMAN, TransactionRule.MATCH_OPERATOR_GT_HUMAN, TransactionRule.MATCH_OPERATOR_EQUALS_HUMAN]:
             if len(self.cleaned_data['match_value']) < 3:
                 raise ValidationError({'match_value': _(f'Match value must be at least three characters')})
-            
+
+class ProtoTransactionForm(ModelForm):
+
+    class Meta:
+        model = ProtoTransaction 
+        fields = ['tax_category', 'criticality', 'direction']
+
 class TransactionRuleSetForm(ModelForm):
 
     class Meta:

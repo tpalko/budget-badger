@@ -5,10 +5,19 @@
 
 <div class="row">
     <div class="col-16">
-        <h3>{{ ruleset.name }}</h3>
-        
-            {{ ruleset.prototransaction.stats|json_format|safe }}
-        
+        <h3>{{ ruleset.name }}</h3>        
+        <div>
+            <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=ruleset.id %}">edit rule set</a>
+        </div>
+        {% if ruleset.prototransaction %}
+        <div>
+            <a href="{% url "prototransaction_edit" tenant_id=1 prototransaction_id=ruleset.prototransaction.id %}">edit prototransaction</a>
+        </div>
+        {% endif %}
+        <div>
+            <a href="{%  url "transactionrulesets_list" tenant_id=1 %}">rule sets</a>
+        </div>
+        {{ ruleset.prototransaction.stats|json_format|safe }}        
     </div>
 </div>
 

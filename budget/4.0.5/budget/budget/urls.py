@@ -34,7 +34,8 @@ urlpatterns = [
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionruleset/(?P<transactionruleset_id>[0-9]+)/', views.transactionruleset, name="transactionruleset"),
     # re_path(r'account/(?P<tenant_id>[0-9]+)/transactionruleset/(?P<rule>.+)/', views.transactionruleset_edit, name="transactionruleset_create"),        
     re_path(r'account/(?P<tenant_id>[0-9]+)/transactionruleset/', views.transactionruleset_edit, name="transactionruleset_create"),    
-    
+    re_path(r'account/(?P<tenant_id>[0-9]+)/prototransaction/(?P<prototransaction_id>[0-9]+)/edit', views.prototransaction_edit, name="prototransaction_edit"),
+
     # re_path(r'account/(?P<tenant_id>[0-9]+)/rulematches/', views.rulematches, name="rulematches"),
     # re_path(r'account/(?P<tenant_id>[0-9]+)/model/(?P<model_id>[0-9]+)/', views.model_edit, name="model_edit"),    
     # re_path(r'account/(?P<tenant_id>[0-9]+)/model/', views.model_edit, name="model_edit"),

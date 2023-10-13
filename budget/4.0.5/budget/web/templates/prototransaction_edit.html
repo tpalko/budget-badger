@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <h3>Editing ProtoTransaction "{{ prototransaction.name }}"</h3>
+        <div>
+            <a href="{% url "transactionruleset" tenant_id=1 transactionruleset_id=prototransaction.transactionruleset.id %}">manage rule set</a>
+        </div>
+        <div>
+            <a href="{%  url "transactionruleset_edit" tenant_id=1 transactionruleset_id=prototransaction.transactionruleset.id %}">edit rule set</a>
+        </div>
+        <div>
+            <a href="{%  url "transactionrulesets_list" tenant_id=1 %}">rule sets</a>
+        </div>
+        <div id="form_errors"></div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-16">
+
+        <form method="POST" action="{% url "prototransaction_edit" tenant_id=1 prototransaction_id=form.instance.id %}">
+            
+            {% csrf_token %}
+
+            <div>
+                {{ form }}
+            </div>
+
+            <input type="submit" name="save" value="save" />
+            <a href="{% url "transactionrulesets_list" tenant_id=1 %}">cancel</a>
+        
+        </form>
+        
+    </div>
+</div>
+
+{% endblock %}
+
+{% block script %}
+
+<script language="javascript">
+
+    document.addEventListener('DOMContentLoaded', (e) => {
+
+
+    });
+
+</script>
+
+{% endblock %}

@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 import traceback
-from web.forms import new_transaction_rule_form_set, form_types, PropertyForm, VehicleForm, EventForm, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
+from web.forms import new_transaction_rule_form_set, form_types, ProtoTransactionForm, PropertyForm, VehicleForm, EventForm, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
 from web.models import records_from_rules, TracingResults, Property, Vehicle, Event, Settings, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
@@ -449,6 +449,26 @@ def transactionruleset_delete(request, tenant_id, transactionruleset_id):
             traceback.print_tb(sys.exc_info()[2])
     
     return JsonResponse(response)
+
+def prototransaction_edit(request, tenant_id, prototransaction_id):
+
+    prototransaction = ProtoTransaction.objects.get(pk=prototransaction_id)
+    form = ProtoTransactionForm(instance=prototransaction)
+    messages = []
+
+    if request.method == "POST":
+
+        form = ProtoTransactionForm(request.POST, instance=prototransaction)
+        
+        try:
+            form.is_valid()
+            form.save() 
+
+            return redirect('transactionrulesets_list', tenant_id=tenant_id)            
+        except:
+            messages.append(f'{sys.exc_info()[0]}: {sys.exc_info()[1]}')
+
+    return render(request, "prototransaction_edit.html", { 'prototransaction': prototransaction, 'form': form  })
 
 def transactionruleset_edit(request, tenant_id, transactionruleset_id=None, rule=None):
 

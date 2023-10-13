@@ -537,7 +537,44 @@ class RecordGrouper(object):
         return monthly_stats
 
     @staticmethod 
-    def get_meaningful_stats(records):
+    def get_overall_stats(rule_set, records):
+
+        stats = {
+            'messages': [],
+            'period': TransactionTypes.PERIOD_UNKNOWN
+        }
+
+        if len(records) < 2:
+            stats['messages'].append(f'overall record count {len(records)} does not allow for stats calculations')
+            logger.warning(stats['messages'])                      
+
+        else:
+                
+            recent_records = sorted(records, key=lambda r: r.transaction_date, reverse=False)
+            recent_records_dates = [ r.transaction_date for r in recent_records ]
+            recent_dates_np = np.array(recent_records_dates)
+            
+            recent_dates_gaps = [ g.total_seconds()/(60*60*24) for g in np.diff(recent_dates_np) ]
+            
+            # weights = RecordGrouper._get_recency_weights(recent_records)
+            
+            # DAILY = 0
+            # WEEKLY = 1
+            # BIWEEKLY = 2
+            # MONTHLY = 3
+
+            timing_bins = list(TransactionTypes.PERIOD_TIMING_BINS_LOOKUP.keys())
+
+            hist, bins = np.histogram(recent_dates_gaps, bins=timing_bins) #, weights=weights[0:-1])
+            common_gaps, winning_bin_index = RecordGrouper._get_values_in_winning_bin(hist, bins, recent_dates_gaps)
+            biggest_gaps, biggest_bin_index = RecordGrouper._get_values_in_largest_bin(hist, bins, recent_dates_gaps)
+
+            stats['period'] = TransactionTypes.PERIOD_TIMING_BINS_LOOKUP[timing_bins[winning_bin_index]]
+        
+        return stats 
+    
+    @staticmethod 
+    def get_directed_stats(rule_set, records):
 
         '''
             is it active?
@@ -616,7 +653,7 @@ class RecordGrouper(object):
                 '''
                 the problem with the above approach is that it will use the largest gap amongst all data.. so if a ruleset captures 
                 a set of records that _happens_ to have a month gap, where it's typically daily or weekly at most, the prototransaction 
-                will be monthly. or if the files uploaded have provided for a large gap simply for missing data.
+                will be monthly. or if thelast_common_date files uploaded have provided for a large gap simply for missing data.
                 what we need to do is first: detect what date ranges there possibly are, even, given the coverage of the accounts _expected_
                 by the records that are being observed. and then, within those ranges, find a reasonable rate (or period) that describes the
                 observed records. it's not enough to _omit_ gaps because they fall within missing date ranges, outside coverage; it's not the
@@ -658,6 +695,10 @@ class RecordGrouper(object):
                 records_in_average_range = Record.objects.none()
                 curr_period = None
                 averaging_period = None 
+                dollars_per_second = 0
+                average_start = None
+                actual_range_days = 0
+                actual_range_days_padded = 0
 
                 while len(records_in_average_range) < 2 or range_total_seconds == 0:
 
@@ -671,15 +712,30 @@ class RecordGrouper(object):
                         curr_period = next_biggest_period
 
                     averaging_period = TransactionTypes.AVERAGING_PERIOD_LOOKUP[curr_period]
-                    average_start = last_common_date - timedelta(days=TransactionTypes.period_days_lookup(averaging_period))
+                    averaging_days = TransactionTypes.period_days_lookup(averaging_period)
+                    average_start = last_common_date - timedelta(days=averaging_days)
+
                     records_in_average_range = [ r for r in recent_records if r.transaction_date >= average_start and r.transaction_date < last_common_date ]
                 
                     if len(records_in_average_range) > 1:
+                        # -- this arbitrarily compresses the averaging time, truncating to the last transaction
                         # actual_range = records_in_average_range[-1].transaction_date - records_in_average_range[0].transaction_date
-                        actual_range = last_common_date - average_start
-                        range_total_seconds = actual_range.total_seconds()
+                        # -- this arbitrarily expands the averaging time, grabbing a gap possibly prior to data or when the timeline for this rule set began
+                        # actual_range = last_common_date - average_start
+                        # -- this again arbitrarily compresses the averaging time, just using the last known point in time instead of the last transaction
+                        actual_range = last_common_date - records_in_average_range[0].transaction_date
+                        actual_range_days = actual_range.total_seconds()/(60*60*24)
+                        actual_range_days_padded = actual_range_days + (averaging_days - (actual_range_days % averaging_days))
+                        range_total_seconds = actual_range_days_padded * 60*60*24
                     
                 if len(records_in_average_range) > 1 and range_total_seconds > 0:
+                    '''
+                    averaging end minus period 
+                    first transaction
+                    last transaction
+                    latest data point (end of CSV range)
+                    now
+                    '''
                     dollars_per_second = (float(sum([ r.amount for r in records_in_average_range])) / range_total_seconds)
                     seconds_per_day = 60*60*24
                     average_for_period = dollars_per_second * seconds_per_day*TransactionTypes.period_days_lookup(period)
@@ -700,7 +756,13 @@ class RecordGrouper(object):
                     'first_transaction': datetime.strftime(first_record.transaction_date, '%Y-%m-%d'),
                     'last_transaction': datetime.strftime(latest_record.transaction_date, '%Y-%m-%d'),
                     'largest_typical_gap': largest_typical_gap,
+                    'records_in_average_range': len(records_in_average_range),
                     'largest_overall_gap': largest_overall_gap,
+                    'dollars_per_second': dollars_per_second,
+                    'actual_range_days': actual_range_days,
+                    'actual_range_days_padded': actual_range_days_padded,
+                    'average_start': datetime.strftime(average_start, '%Y-%m-%d'),
+                    'earliest_averaging_transaction_date': datetime.strftime(records_in_average_range[0].transaction_date, '%Y-%m-%d'),
                     'last_common_date': datetime.strftime(last_common_date, '%Y-%m-%d'),
                     'last_transaction_date': datetime.strftime(latest_record.transaction_date, '%Y-%m-%d'),
                     'is_active': is_active,
@@ -742,6 +804,24 @@ class RecordGrouper(object):
 
             stats[split_key].update(split_stats)
 
+        credit_avg = 0
+        debit_avg = 0
+        
+        if 'average_for_month' in stats[ProtoTransaction.DIRECTION_CREDIT]:
+            credit_avg = abs(stats[ProtoTransaction.DIRECTION_CREDIT]['average_for_month'])
+        if 'average_for_month' in stats[ProtoTransaction.DIRECTION_DEBIT]:
+            debit_avg = abs(stats[ProtoTransaction.DIRECTION_DEBIT]['average_for_month'])
+        
+        calculated_direction = ProtoTransaction.DIRECTION_DEBIT if debit_avg > credit_avg else ProtoTransaction.DIRECTION_CREDIT
+
+        if not rule_set.prototransaction_safe() \
+            or (
+                rule_set.prototransaction.direction != calculated_direction \
+                    and rule_set.prototransaction.direction not in [ProtoTransaction.DIRECTION_BIDIRECTIONAL]
+            ):
+            
+            stats['direction'] = calculated_direction
+            
         return stats 
     
     @staticmethod 
@@ -960,7 +1040,7 @@ class RecordGrouper(object):
             less_than_priority=trs.priority,
             is_auto=trs.is_auto
         )
-        stats = RecordGrouper.get_meaningful_stats(records)
+        stats = RecordGrouper.get_directed_stats(trs, records)
         print(f'rule set: {trs.name}')
         print(json.dumps(stats, sort_keys=True, ensure_ascii=True, indent=4))
 
@@ -978,9 +1058,11 @@ class RecordGrouper(object):
 
         stats.update({ 'monthly': RecordGrouper.get_monthly_stats(rule_set) })
 
+        stats.update(RecordGrouper.get_overall_stats(rule_set, records))
+
         stats.update(RecordGrouper.get_stats(records, stats))
 
-        stats.update(RecordGrouper.get_meaningful_stats(records))
+        stats.update(RecordGrouper.get_directed_stats(rule_set, records))
 
         return stats 
 
@@ -999,6 +1081,8 @@ class RecordGrouper(object):
                 
                 stats = RecordGrouper.get_all_stats_for_rule_set(rule_set)
                 
+
+
                 # period_days = TransactionTypes.period_reverse_lookup(stats['period'])
                 # break_after_misses = math.ceil(period_days / 30)
                 # break_after_misses = 3 if break_after_misses < 3 else break_after_misses
