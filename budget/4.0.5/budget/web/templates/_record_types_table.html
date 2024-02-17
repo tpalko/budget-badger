@@ -1,7 +1,14 @@
 {% load budget_tags %}
 
 <table>
-    {% for record in records %} 
+    <tr>
+        <th>date</th>
+        <th>account</th>
+        <th>description</th>
+        <th>amount</th>
+        <th>associated</th>
+    </tr>
+    {% for record in records %}         
         <tr title="record {{ record.id }}">
             <td>{{ record.date }}</td>
             <td>{{ record.account }}</td>

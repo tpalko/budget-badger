@@ -56,7 +56,7 @@
             </tr>        
         {% for account in accounts %}
             <tr>
-                <td>{{ account.name }}</td>
+                <td title="{{ account.comments }}">{{ account.name }}</td>
                 <td>{{ account.account_number }}</td>
                 <td>{{ account.recordformat }}</td>
                 <td>{{ account.balance }}</td>
@@ -98,7 +98,7 @@
     {% for creditcard in creditcards %}
 
         <tr>
-            <td>{{ creditcard.name }}</td>
+            <td title="{{ creditcard.comments }}">{{ creditcard.name }}</td>
             <td>{{ creditcard.recordformat }}</td>
             <td>{{ creditcard.account_number }}</td>
             <td>{{ creditcard.interest_rate }}</td>

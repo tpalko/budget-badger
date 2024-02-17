@@ -81,6 +81,7 @@ class Account(BaseModel):
     recordformat = models.ForeignKey(RecordFormat, related_name='accounts', on_delete=models.RESTRICT, null=True)
     name = models.CharField(max_length=255, null=False)
     account_number = models.CharField(max_length=50, null=True)
+    comments = models.TextField(null=True)
     balance = models.DecimalField(decimal_places=2, max_digits=20)
     balance_at = models.DateField()
     minimum_balance = models.DecimalField(decimal_places=2, max_digits=20, null=False, default=0.00)    
@@ -99,6 +100,7 @@ class CreditCard(BaseModel):
     recordformat = models.ForeignKey(RecordFormat, related_name='creditcards', on_delete=models.RESTRICT, null=True)
     name = models.CharField(max_length=255, null=False)
     account_number = models.CharField(max_length=50, null=True)
+    comments = models.TextField(null=True)
     interest_rate = models.DecimalField(decimal_places=2, max_digits=5, default=0)
     cycle_due_date = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)], default=1, blank=True, null=True)
     cycle_billing_date = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(31)], default=1, blank=True, null=True)
@@ -172,6 +174,9 @@ def records_from_rules(rule_logics, join_operator):
 
     for logic in rule_logics:
 
+        # -- 'full_description' must be digested - this field doesn't exist, it's just a shortcut for "all description fields"
+        # -- this is why 'full_description' cannot be used reliably with 'and'.. the set of all description fields must be OR'd
+        # -- to capture faithfully, but if the user says 'AND', the logic is broken, until a parentheses feature is built
         if logic.tr.record_field == "full_description":
             new_logics = [ 
                 TransactionRuleLogic(TransactionRule(record_field='description', inclusion=logic.tr.inclusion, match_operator=logic.tr.match_operator, match_value=logic.tr.match_value)),
@@ -390,10 +395,6 @@ class ProtoTransaction(BaseModel):
 
     transactionruleset = models.OneToOneField(to=TransactionRuleSet, related_name='prototransaction', on_delete=models.CASCADE, null=True)        
     name = models.CharField(max_length=200, unique=True)
-    
-    CRITICALITY_NECESSARY = 'necessary'
-    CRITICALITY_FLEXIBLE = 'flexible'
-    CRITICALITY_OPTIONAL = 'optional'
 
     # -- emitted from stats (not anymore, debit/credit split)
     # is_active = models.BooleanField(null=False, default=True)
@@ -401,7 +402,7 @@ class ProtoTransaction(BaseModel):
     # -- tax_category to categorize expenses for tax purposes
     tax_category = models.CharField(max_length=50, choices=TransactionTypes.tax_category_choices, default=TransactionTypes.TAX_CATEGORY_NONE, null=True)
     # -- we can guess at this
-    period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
+    # period = models.CharField(max_length=50, choices=TransactionTypes.period_choices, default=TransactionTypes.PERIOD_MONTHLY)
     # monthly_spend = models.DecimalField(decimal_places=2, max_digits=20, null=True)
     # monthly_earn = models.DecimalField(decimal_places=2, max_digits=20, null=True)
     
@@ -411,7 +412,7 @@ class ProtoTransaction(BaseModel):
     # -- recurring_amount means little, very few expenses repeat to the penny, and the fact that they do is insignificant
     recurring_amount = models.DecimalField(decimal_places=2, max_digits=20, null=True)
 
-    criticality = models.CharField(max_length=20, choices=choiceify([CRITICALITY_FLEXIBLE, CRITICALITY_NECESSARY, CRITICALITY_OPTIONAL]), null=False, default=CRITICALITY_OPTIONAL)
+    criticality = models.CharField(max_length=20, choices=TransactionTypes.criticality_choices, null=False, default=TransactionTypes.CRITICALITY_OPTIONAL)
     direction = models.CharField(max_length=20, choices=choiceify([DIRECTION_CREDIT, DIRECTION_DEBIT, DIRECTION_BIDIRECTIONAL, DIRECTION_UNSET]), null=False, default=DIRECTION_UNSET)
 
     # -- stats contains 'debit' and 'credit', each of which have 'average_for_period' and 'average_for_month'    
@@ -421,6 +422,11 @@ class ProtoTransaction(BaseModel):
         return ('is_active' in self.stats['debit'] and self.stats['debit']['is_active']) \
             or ('is_active' in self.stats['credit'] and self.stats['credit']['is_active'])
 
+    def period(self, direction):
+        if direction in self.stats and 'period' in self.stats[direction]:
+            return self.stats[direction]['period']
+        return None
+    
     def force_direction(self):
         credit_avg = abs(self.average_for_month(ProtoTransaction.DIRECTION_CREDIT) or 0)
         debit_avg = abs(self.average_for_month(ProtoTransaction.DIRECTION_DEBIT) or 0)
@@ -732,6 +738,34 @@ class RecordMeta(BaseModel):
         RECORD_TYPE_INTERNAL    
     ]
 
+    TAX_CLASSIFICATION_DEDUCTIBLE_EXPENSE               = 'deductible-expense'
+    TAX_CLASSIFICATION_DEDUCTIBLE_EXPENSE_UTILITY       = 'deductible-expense-utility'
+    TAX_CLASSIFICATION_DEDUCTIBLE_EXPENSE_REPAIR        = 'deductible-expense-repair'
+    TAX_CLASSIFICATION_DEDUCTIBLE_EXPENSE_MAINTENANCE   = 'deductible-expense-maintenance'
+    TAX_CLASSIFICATION_DEDUCTIBLE_EXPENSE_INSURANCE     = 'deductible-expense-insurance'
+    TAX_CLASSIFICATION_PROPERTY_COUNTY      = 'property-county'
+    TAX_CLASSIFICATION_PROPERTY_BOROUGH     = 'property-borough'
+    TAX_CLASSIFICATION_PROPERTY_SCHOOL      = 'property-school'
+    TAX_CLASSIFICATION_INCOME_FEDERAL       = 'income-federal'
+    TAX_CLASSIFICATION_INCOME_STATE         = 'income-state'
+    TAX_CLASSIFICATION_INCOME_CITY          = 'income-city'
+    TAX_CLASSIFICATION_INCOME_LOCAL         = 'income-local'
+    TAX_CLASSIFICATION_TRANSFER             = 'transfer'
+    TAX_CLASSIFICATION_CAPITAL_GAINS        = 'capital-gains'
+
+    TAX_CLASSIFICATIONS = [
+        TAX_CLASSIFICATION_DEDUCTIBLE_EXPENSE,
+        TAX_CLASSIFICATION_PROPERTY_COUNTY,
+        TAX_CLASSIFICATION_PROPERTY_BOROUGH,
+        TAX_CLASSIFICATION_PROPERTY_SCHOOL,
+        TAX_CLASSIFICATION_INCOME_FEDERAL,
+        TAX_CLASSIFICATION_INCOME_STATE,
+        TAX_CLASSIFICATION_INCOME_CITY,
+        TAX_CLASSIFICATION_INCOME_LOCAL,
+        TAX_CLASSIFICATION_TRANSFER,
+        TAX_CLASSIFICATION_CAPITAL_GAINS
+    ]
+
     extra_fields_hash = models.CharField(max_length=32, null=True)
     core_fields_hash = models.CharField(max_length=32, null=True)
     raw_data_line_hash = models.CharField(max_length=32, null=True)
@@ -739,6 +773,7 @@ class RecordMeta(BaseModel):
     property = models.ForeignKey(to=Property, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     vehicle = models.ForeignKey(to=Vehicle, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     event = models.ForeignKey(to=Event, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
+    tax_classification = models.CharField(max_length=30, null=True, choices=choiceify(TAX_CLASSIFICATIONS))
     target = models.CharField(max_length=50, null=True)
     description = models.CharField(max_length=255, blank=True, null=False)
     detail = models.TextField(null=False, blank=True)
@@ -775,7 +810,8 @@ class RecordTypeManager(models.Manager):
             .annotate(meta_record_type=meta_join.values('record_type')) \
             .annotate(meta_event_id=meta_join.values('event_id')) \
             .annotate(meta_vehicle_id=meta_join.values('vehicle_id')) \
-            .annotate(meta_property_id=meta_join.values('property_id'))
+            .annotate(meta_property_id=meta_join.values('property_id')) \
+            .annotate(meta_tax_classification=meta_join.values('tax_classification'))
 
         # .annotate(meta_accounted_at=meta_join.values('accounted_at')) \
 
@@ -789,11 +825,13 @@ class RecordTypeManager(models.Manager):
 
 class BudgetingManager(RecordTypeManager):
 
+    # -- TODO: REFUND had been excluded for a while, why? if an expense and refund are paired, they cancel each other out? (2/16/24)
     def get_queryset(self):
         return super().get_queryset() \
             .exclude(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL) \
+            .exclude(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) \
             .exclude(meta_event_id__isnull=False)
-            # .exclude(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) \            
+            
             # .exclude(Q(meta_record_type=RecordMeta.RECORD_TYPE_REFUND) | Q(meta_record_type=RecordMeta.RECORD_TYPE_INTERNAL))
         
 class Record(BaseModel):
@@ -889,6 +927,10 @@ class Record(BaseModel):
                 raise Exception(f'record attempted to save with altered raw_data_line: ')
 
             logger.debug(f'record raw line: {self.raw_data_line} / {self.raw_data_line_hash}')
+
+            if not self.raw_data_line_hash:
+                logger.debug(f'record does not have raw_data_line_hash set, so setting that')
+                self.raw_data_line_hash = raw_data_line_hash
 
             raw_meta = RecordMeta.objects.filter(raw_data_line_hash=self.raw_data_line_hash).first()
             

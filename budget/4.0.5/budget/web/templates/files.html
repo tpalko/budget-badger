@@ -3,6 +3,12 @@
 
 {% block content %}
 
+<form id="upload_form" method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ uploadedfile_form }}
+    <input type="submit" />
+</form>
+
 <div>
     Showing {{ uploadedfiles|length }} files
     <a class="button" href="{% url "reprocess_files" tenant_id=1 action="process" %}">Reprocess Files</a>   
@@ -34,10 +40,6 @@
         </tr>
     {% endfor %}
 </table>
-<form id="upload_form" method="POST" enctype="multipart/form-data">
-    {% csrf_token %}
-    {{ uploadedfile_form }}
-    <input type="submit" />
-</form>
+
 
 {% endblock %}

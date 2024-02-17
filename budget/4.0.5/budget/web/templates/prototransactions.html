@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <h3>Prototransactions</h3>
+
+        <form method="POST">
+            {% csrf_token %}
+
+            {{ pt_formset.management_form }}
+            
+            <input type="submit" />
+            {% for form in pt_formset %}
+                <div>
+                    {{ form.instance.id }} {{ form.instance.name }}
+                    {{ form.as_p }}
+                </div>
+            {% endfor %}            
+        </form>
+    </div>  
+</div>
+
+{% endblock %}
+
+{% block script %}
+
+<script language="javascript">
+
+    document.addEventListener('DOMContentLoaded', (e) => {
+    });
+
+</script>
+
+{% endblock %}

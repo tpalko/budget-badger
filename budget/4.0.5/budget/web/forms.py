@@ -78,6 +78,12 @@ class ProtoTransactionForm(ModelForm):
         model = ProtoTransaction 
         fields = ['tax_category', 'criticality', 'direction']
 
+class BaseProtoTransactionFormSet(BaseModelFormSet):
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.queryset = ProtoTransaction.objects.filter(transactionruleset__is_auto=False)
+
 class TransactionRuleSetForm(ModelForm):
 
     class Meta:
@@ -138,7 +144,7 @@ class CreditCardForm(ModelForm):
 
     class Meta:
         model = CreditCard 
-        fields = ['recordformat', 'name', 'account_number', 'interest_rate', 'cycle_billing_date', 'cycle_due_date']
+        fields = ['recordformat', 'name', 'account_number', 'comments', 'interest_rate', 'cycle_billing_date', 'cycle_due_date']
     
     recordformat = ModelChoiceField(queryset=RecordFormat.objects.all(), required=False)
 
@@ -291,7 +297,7 @@ class AccountForm(ModelForm):
 
     class Meta:
         model = Account 
-        fields = ['name', 'balance', 'balance_at', 'minimum_balance', 'account_number', 'recordformat']
+        fields = ['name', 'balance', 'balance_at', 'minimum_balance', 'account_number', 'comments', 'recordformat']
 
 BASE_TRANSACTION_FIELDS = ['id', 'name', 'amount', 'account', 'transaction_type', 'is_active', 'is_imported']
 

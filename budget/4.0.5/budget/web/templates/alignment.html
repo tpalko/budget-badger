@@ -6,8 +6,8 @@
 <div class="row">
     <div class="col-16">
         <h3>Alignment</h3>
-        <h4>Credit: ${{ credit_total|format_currency }}</h4>
-        <h4>Debit: ${{ debit_total|format_currency }}</h4>
+        <h4>Credit rulesets balance: ${{ credit_total|format_currency }}</h4>
+        <h4>Debit rulesets balance: ${{ debit_total|format_currency }}</h4>
         <h4>Monthly expected: ${{ total|format_currency }}</h4>
     </div>
     <div class="col-16">        
@@ -33,10 +33,10 @@
                     <td>{{ monthly_records|lookup:month_start|lookup:"unaccounted_percent" }}</td>
                     <td>{{ monthly_records|lookup:month_start|lookup:"unaccounted_credit_amount_percent" }}</td>
                     <td>{{ monthly_records|lookup:month_start|lookup:"unaccounted_debit_amount_percent" }}</td>
-                    <td>
+                    <td nowrap>
                         {% for b in monthly_records|lookup:month_start|lookup:"brackets" %}                            
                             <div class="coverage_brackets">
-                                <span class="name">{{ b|lookup:"name" }}</span>{% for s in b|lookup:"segments" %}<span title="{{ s|lookup:"title" }}" class="{{ s|lookup:"class" }}" style="width: {{ s|lookup:"width"|mult:4 }}px;"></span>{% endfor %}
+                                <span class="name">{{ b|lookup:"name" }} ({{ b|lookup:"account_number" }})</span>{% for s in b|lookup:"segments" %}<span title="{{ s|lookup:"title" }}" class="{{ s|lookup:"class" }}" style="width: {{ s|lookup:"width"|mult:4 }}px;"></span>{% endfor %}
                             </div>
                         {% endfor %}
                     </td>                    

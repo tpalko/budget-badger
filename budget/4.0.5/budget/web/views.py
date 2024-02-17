@@ -12,12 +12,13 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import logging
 import traceback
-from web.forms import new_transaction_rule_form_set, form_types, ProtoTransactionForm, PropertyForm, VehicleForm, EventForm, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
+from web.forms import new_transaction_rule_form_set, form_types, BaseProtoTransactionFormSet, ProtoTransactionForm, PropertyForm, VehicleForm, EventForm, SorterForm, SettingForm, TransactionRuleSetForm, TransactionRuleForm, RecordFormatForm, CreditCardForm, UploadedFileForm, AccountForm, CreditCardExpenseFormSet
 from web.models import records_from_rules, TracingResults, Property, Vehicle, Event, Settings, TransactionRule, TransactionRuleLogic, TransactionRuleSet, RecordFormat, CreditCard, Account, Record, RecordMeta, Transaction, RecurringTransaction, SingleTransaction, CreditCardTransaction, DebtTransaction, UploadedFile, PlannedPayment, ProtoTransaction
 from web.util.viewutil import get_heatmap_data, get_records_template_data, transaction_type_display
 from web.util.recordgrouper import RecordGrouper 
 from web.util.projections import fill_planned_payments
 from web.util.modelutil import TransactionTypes
+from web.util.stats import group_records, months, get_month_bracket
 from web.util.viewutil import Searches, SEARCH_QUERIES, SEARCH_OPTIONS, generate_display_brackets, coverage_brackets, get_ruleset_breakout, fuzzy_comparator, cleanup_file, process_file, refresh_prototransaction, handle_transaction_rule_form_request, process_transaction_rule_forms, init_transaction_rule_forms, alphaize_filename, base64_encode, process_uploaded_file, save_processed_records, ruleset_stats, get_querystring
 from web.util.ruleindex import get_record_rule_index
 from web.util.tokens import tokenize_records
@@ -252,6 +253,7 @@ def recordmatcher(request, tenant_id):
 
                 pared_record_count = len(pared_recordset)
 
+                # -- this neeeds to match web.context.budget.budget_context
                 shared_context = {
                     'total_record_count': pared_record_count,
                     'accounted_records_removed': removed,
@@ -260,9 +262,11 @@ def recordmatcher(request, tenant_id):
                     'heatmap_data': get_heatmap_data(pared_recordset),
                     'records': pared_recordset,
                     'record_types': RecordMeta.RECORD_TYPES,
+                    'tax_classifications': RecordMeta.TAX_CLASSIFICATIONS,
                     'join_operators': TransactionRuleSet.join_operator_choices,
-                    'events': Event.objects.all()
-
+                    'events': Event.objects.all(),
+                    'properties': Property.objects.all(),
+                    'vehicles': Vehicle.objects.all()
                 }
 
                 response['data'][key]['recordstats'] = render_to_string("_recordstats.html", context=shared_context)
@@ -296,7 +300,7 @@ def sorter(request, tenant_id):
     if request.method == "POST":
         if 'ruleset' in request.POST and request.POST['ruleset']:
             transactionruleset_id = request.POST['ruleset']
-
+    
     post_handled, transactionruleset_form, transactionrule_formset = handle_transaction_rule_form_request(request, transactionruleset_id)
     
     if post_handled:
@@ -332,6 +336,133 @@ def sorter(request, tenant_id):
 
     return render(request, "sorter.html", context) 
 
+def prototransactions(request, tenant_id):
+
+    ProtoTransactionFormSet = modelformset_factory(
+        ProtoTransaction, 
+        form=ProtoTransactionForm, 
+        formset=BaseProtoTransactionFormSet,
+        fields=('criticality',), 
+        extra=0)
+
+    pt_formset = ProtoTransactionFormSet()
+
+    if request.method == "POST":
+
+        logger.debug(request.POST)
+
+        pt_formset = ProtoTransactionFormSet(request.POST, initial=ProtoTransaction.objects.filter(transactionruleset__is_auto=False))
+        
+        logger.debug(dir(pt_formset))
+        logger.debug(f'is bound: {pt_formset.is_bound}')
+        logger.debug(f'queryset: {[ {"id": p.id, "crit": p.criticality} for p in pt_formset.get_queryset() ]}')
+        
+        if pt_formset.is_valid():
+            logger.debug(f'cleaned data: {pt_formset.cleaned_data}')        
+            pt_formset.save()
+            return redirect('prototransactions', tenant_id=tenant_id)    
+        else:
+            logger.warning(pt_formset.error_messages)
+
+    # queryset=ProtoTransaction.objects.filter(transactionruleset__is_auto=False))
+
+    return render(request, "prototransactions.html", { 'pt_formset': pt_formset })
+
+def history(request, tenant_id):
+
+    dataset_by_month = {}
+
+    # dataset_by_types = { c[1]: {} for c in TransactionTypes.criticality_choices }
+    # dataset_by_types['credit'] = {}
+
+    start = request.GET['start'] if 'start' in request.GET else None 
+    end = request.GET['end'] if 'end' in request.GET else None 
+
+    tx_rule_sets = TransactionRuleSet.objects.all()
+
+    filter_by_rule_index = get_record_rule_index(
+        tx_rule_sets,            
+        is_auto=False, 
+        refresh_records=True
+    )
+
+    for c in TransactionTypes.criticality_choices:
+        
+        criticality_prototransactions = ProtoTransaction.objects.filter(criticality=c[0])
+
+        for pt in criticality_prototransactions:
+            if 'monthly' in pt.stats:
+                monthlies = pt.stats['monthly']
+                for month in [ m for m in monthlies if (start is None or m['month'] >= start) and (end is None or m['month'] <= end) ]:
+                    if month['month'] not in dataset_by_month:
+                        dataset_by_month[month['month']] = { crit[1]: 0 for crit in TransactionTypes.criticality_choices }
+                        dataset_by_month[month['month']].update({ 'credit': 0 })
+                        dataset_by_month[month['month']].update({ 'unaccounted': 0 })
+                    # if month['month'] not in dataset_by_types['credit']:
+                    #     dataset_by_types['credit'][month['month']] = 0
+                    # dataset_by_types['credit'][month['month']] += abs(month['credit'])
+                    # if month['month'] not in dataset_by_types[c[1]]:
+                    #     dataset_by_types[c[1]][month['month']] = 0
+                    # dataset_by_types[c[1]][month['month']] += abs(month['debit'])
+                    
+                    dataset_by_month[month['month']][c[1]] += abs(month['debit'])
+                    dataset_by_month[month['month']]['credit'] += abs(month['credit'])
+
+    all_months = sorted(dataset_by_month)
+    for month in all_months:
+        month_start, month_end = get_month_bracket(month.split('-')[0], month.split('-')[1])
+        month_records = Record.budgeting.filter(transaction_date__gte=month_start, transaction_date__lt=month_end).order_by('transaction_date')
+        unaccounted_records, accounted_records = RecordGrouper.filter_accounted_records(records=month_records, filter_by_rule_index=filter_by_rule_index, is_auto=False, refresh_cache=False)
+        total_unaccounted = RecordGrouper.record_magnitude(unaccounted_records)
+        dataset_by_month[month]['unaccounted'] += float(total_unaccounted)
+
+    dataset_by_month = { m: dataset_by_month[m] for m in all_months }
+    
+    borderColors = {
+        TransactionTypes.CRITICALITY_TAXES: '#990000',
+        TransactionTypes.CRITICALITY_NECESSARY: '#999900',
+        TransactionTypes.CRITICALITY_FLEXIBLE: '#009999',
+        TransactionTypes.CRITICALITY_OPTIONAL: '#000099',
+        'credit': '#00cc00',
+        'unaccounted': "#cccccc"
+    }
+
+    datasets = []
+
+    datasets.append({ 
+        'label': f'all credit', 
+        'type': 'line',
+        'data': [ dataset_by_month[m]['credit'] for m in all_months ],
+        'borderColor': borderColors['credit'],
+        'backgroundColor': borderColors['credit']
+    })
+
+    for i,c in enumerate(TransactionTypes.criticality_choices):
+
+        datasets.append( 
+            { 
+                'label': f'{c[1]} debit', 
+                'data': [ dataset_by_month[m][c[1]] for m in all_months ],
+                'borderColor': borderColors[c[0]],
+                'backgroundColor': borderColors[c[0]]
+            } 
+        )
+    
+    datasets.append({ 
+        'label': f'all unaccounted', 
+        # 'type': 'line',
+        'data': [ dataset_by_month[m]['unaccounted'] for m in all_months ],
+        'borderColor': borderColors['unaccounted'],
+        'backgroundColor': borderColors['unaccounted']
+    })
+
+    data = {
+        'labels': all_months,
+        'datasets': datasets
+    }
+
+    return render(request, "history.html", { 'data': data, 'months': all_months })
+
 def alignment(request, tenant_id):
 
     # misses = 0 
@@ -343,7 +474,7 @@ def alignment(request, tenant_id):
     
     if first_date_file:
             
-        for month_start, month_end in RecordGrouper.months(first_date_file.first_date):    
+        for month_start, month_end in months(first_date_file.first_date):    
 
             brackets = generate_display_brackets(account_brackets, card_brackets, month_start.date(), month_end.date())
 
@@ -678,12 +809,18 @@ def record_typing(request, tenant_id, search=None):
             search = request.GET['search']
             return redirect("record_typing", tenant_id=tenant_id, search=search)
 
+    RECORD_TYPING_LIMIT = 100
+
     for record_type in RecordMeta.RECORD_TYPES:
             
         records = Record.objects \
             .filter(meta_record_type=record_type) \
             .filter(SEARCH_QUERIES[search]) \
-            .order_by('-transaction_date')
+            .order_by('-transaction_date')            
+            
+        if len(records) > RECORD_TYPING_LIMIT:
+            logger.warning(f'limiting {len(records)} records to {RECORD_TYPING_LIMIT}')
+            records = records[0:100]
 
         # cc_payments = Record.objects.filter(
         #     uploaded_file__creditcard__isnull=False, 
@@ -701,6 +838,7 @@ def record_typing(request, tenant_id, search=None):
         template_models = [ {
             'id': p.id,
             'date': p.transaction_date, 
+            'account_id': p.uploaded_file.account_id,
             'account': f'{p.uploaded_file.account_name()} {p.uploaded_file.account_number()}',
             'amount': p.amount,
             'description': p.description,
@@ -714,9 +852,10 @@ def record_typing(request, tenant_id, search=None):
             for model in template_models:
                 checking = Record.objects.filter(
                     # uploaded_file__account__isnull=False, 
+                    # ~Q(uploaded_file__account__id=model['account_id']),
                     amount=-model['amount'], 
-                    transaction_date__gt=(model['date'] - timedelta(days=5)),
-                    transaction_date__lt=(model['date'] + timedelta(days=5))
+                    transaction_date__gte=(model['date'] - timedelta(days=5)),
+                    transaction_date__lte=(model['date'] + timedelta(days=5))
                 )
                 model['assoc'] = [ {
                         'id': assoc.id,
@@ -759,6 +898,7 @@ def update_record_meta(request, tenant_id):
             record_meta = record.record_meta() 
             
             response['data']['original_record_type'] = record_meta.record_type 
+            response['data']['original_tax_classification'] = record_meta.tax_classification
             response['data']['original_description'] = record_meta.description 
             response['data']['original_event_id'] = record_meta.event_id
             response['data']['original_vehicle_id'] = record_meta.vehicle_id
@@ -768,6 +908,7 @@ def update_record_meta(request, tenant_id):
             assoc_record_meta = None 
 
             record_type = request.POST['record_type']
+            tax_classification = request.POST['tax_classification']
             description = request.POST['description']
             event_id = request.POST['event_id']
             vehicle_id = request.POST['vehicle_id']
@@ -790,17 +931,19 @@ def update_record_meta(request, tenant_id):
 
             if record_meta:   
                 record_meta.record_type = record_type
+                record_meta.tax_classification = tax_classification
                 record_meta.description = description 
                 record_meta.event_id = event_id
                 record_meta.vehicle_id = vehicle_id
                 record_meta.property_id = property_id
                 record_meta.save()
-                update_msgs.append(f'record/meta {record.id}/{record_meta.id} type:{record_type},desc:{description},event:{event_id},vehicle:{vehicle_id},property:{property_id}')
+                update_msgs.append(f'record/meta {record.id}/{record_meta.id} type:{record_type},tax:{tax_classification},desc:{description},event:{event_id},vehicle:{vehicle_id},property:{property_id}')
 
             if assoc_record_meta: # and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
                 assoc_record_meta.record_type = record_type 
+                assoc_record_meta.tax_classification = tax_classification
                 assoc_record_meta.save()
-                update_msgs.append(f'assoc record/meta {assoc_record.id}/{assoc_record_meta.id} type:{record_type}')
+                update_msgs.append(f'assoc record/meta {assoc_record.id}/{assoc_record_meta.id} type:{record_type} tax:{tax_classification}')
 
             response['messages'].append("/".join(update_msgs))
 
@@ -959,7 +1102,7 @@ def records(request, tenant_id):
         'records': Record.objects.filter(uploaded_file__creditcard=c)
     } for c in CreditCard.objects.all() ]
 
-    record_rules = get_record_rule_index(TransactionRuleSet.objects.all())
+    record_rules = get_record_rule_index(TransactionRuleSet.objects.filter(is_auto=False))
 
     # -- post processing 
     for a in records_by_account:
@@ -1081,7 +1224,6 @@ def coverage(request, tenant_id):
     for f in accounts.uploaded_files:
         pass 
 
-
 def select_tag(request, tenant_id):
 
     response = {
@@ -1126,7 +1268,7 @@ def reprocess_files(request, tenant_id, action, uploadedfile_id=None):
 def regroup_manual_records(request, tenant_id):
 
     try:
-        RecordGrouper.group_records(force_regroup_all=True, is_auto=False)
+        group_records(force_regroup_all=True, is_auto=False)
     except:
         message = str(sys.exc_info()[1])
         logger.error(sys.exc_info()[0])

@@ -1,29 +1,37 @@
 <form id="record_{{ selected_record.id }}_meta" class="record_meta" method="POST" action="{% url "update_record_meta" tenant_id=1 %}">
     <input type="hidden" name="record_ids" value="{{ selected_record.id }}" />
     <input type="hidden" name="assoc_record_id" value="" />
-    <input type="text" name="description" value="{{ selected_record.meta_description }}" />
-    <select name="record_type">                    
-        {% for k in record_types %}
-            <option value="{{ k }}" {% if k == selected_record.meta_record_type %}selected{% endif %}>{{ k }}</option>
-        {% endfor %}
-    </select>
-    <select name="event_id">
-        <option value="">- no event -</option>
-        {% for e in events %}
-            <option value="{{ e.id }}" {% if e.id == selected_record.meta_event_id %}selected{% endif %}>{{ e.name }}</option>
-        {% endfor %}
-    </select>
-    <select name="property_id">
-        <option value="">- no property -</option>
-        {% for e in properties %}
-            <option value="{{ e.id }}" {% if e.id == selected_record.meta_property_id %}selected{% endif %}>{{ e.name }}</option>
-        {% endfor %}
-    </select>
-    <select name="vehicle_id">
-        <option value="">- no vehicle -</option>
-        {% for e in vehicles %}
-            <option value="{{ e.id }}" {% if e.id == selected_record.meta_vehicle_id %}selected{% endif %}>{{ e.name }}</option>
-        {% endfor %}
-    </select>
+    <textarea name="description">{{ selected_record.meta_description }}</textarea>
+    <div>
+        <label for="record_type">type:</label><select name="record_type">
+            {% for k in record_types %}
+                <option value="{{ k }}" {% if k == selected_record.meta_record_type %}selected{% endif %}>{{ k }}</option>
+            {% endfor %}
+        </select>
+        <label for="tax_classification">type:</label><select name="tax_classification">
+            <option value="">- no tax class. -</option>
+            {% for t in tax_classifications %}
+                <option value="{{ t }}" {% if t == selected_record.meta_tax_classification %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+        </select>
+        <select name="event_id">
+            <option value="">- no event -</option>
+            {% for e in events %}
+                <option value="{{ e.id }}" {% if e.id == selected_record.meta_event_id %}selected{% endif %}>{{ e.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="property_id">
+            <option value="">- no property -</option>
+            {% for p in properties %}
+                <option value="{{ p.id }}" {% if p.id == selected_record.meta_property_id %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="vehicle_id">
+            <option value="">- no vehicle -</option>
+            {% for v in vehicles %}
+                <option value="{{ v.id }}" {% if v.id == selected_record.meta_vehicle_id %}selected{% endif %}>{{ v.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
     <input type="submit" />
 </form>

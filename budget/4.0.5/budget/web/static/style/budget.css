@@ -189,7 +189,7 @@ tr:nth-child(odd) td.prototransaction-field {
 
 div.coverage_brackets span.name {
 	display: inline-block;
-	width: 200px;
+	width: 250px;
 }
 
 div.coverage_brackets span {
@@ -203,6 +203,10 @@ div.coverage_brackets span.on {
 
 div.coverage_brackets span.off {
 	background-color: red;
+}
+
+table.transactionruleset-table {
+	font-size: 0.9em;
 }
 
 tr.ruleset-status-active {

@@ -1,5 +1,17 @@
 # Budget Badger 
 
+### 10/25/2023
+
+The math-ing on rulesets to achieve some value we can use for prediction or projection is not working. There's too much variation in the patterns of transactions. Programmatically, it's difficult to characterize a random assortment of timestamps and amounts. But if this is the difficult task, we can offload this singularly to the user and proceed with math stuffs from that point. For instance, from a few specific user-given data points:
+
+* start date (default first transaction)
+* end date (default none)
+* general pattern (daily, utility (monthly, quarterly, annually), tax(es) (possibly multiple layered patterns quarterly or annual), infrequent)
+
+we can better move forward. It seems a lot of the mistakes of the current algorithm stem from early mischaracterizations of the above points. 
+
+It's also worth noting that we base the averaging date range used largely on the period calculated, which is iffy to begin with, starting from some base "larger enough" than the period and progressively expanding that window until we have "enough" data. If the period is incorrect, we end up settling for a smaller set of data than we should use. Going from a singular data point such as the rule set's period also ignores larger annual patterns we might see. Instead of targeting the month as the base unit of projection, we need to look at an entire year because most everything from household spending to utility bills cycles on a year, not a month. This means we need several years of data to really do the work, which is a pretty impractictal starting point for a user just starting with the service, making this path much less monetizable without significant additional tooling such as a "historical spending estimation calculator". On the short term, there is still useful data to extract, however, we just miss the annual ebb and flow. 
+
 ### 9/22/2023
 
 Questions to answer:

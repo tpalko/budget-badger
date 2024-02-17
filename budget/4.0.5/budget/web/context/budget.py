@@ -33,10 +33,10 @@ def budget_context(request_context):
             'url': format_url('records'),
             'display': 'Records'
         },
-        { 
-            'url': format_url('tracing'),
-            'display': 'Tracing'
-        },
+        # { 
+        #     'url': format_url('tracing'),
+        #     'display': 'Tracing'
+        # },
         { 
             'url': format_url('record_typing'),
             'display': 'Record Typing'
@@ -52,6 +52,10 @@ def budget_context(request_context):
         { 
             'url': format_url('alignment'),
             'display': 'Alignment'
+        },        
+        { 
+            'url': format_url('history'),
+            'display': 'History'
         },        
         # { 
         #     'url': format_url('transactionrulesets_auto'),
@@ -71,10 +75,12 @@ def budget_context(request_context):
         },
     ]
 
+    # -- changes here need to match shared_context in views.recordmatcher
     return {
         'debug': debug,
         'menu': menu,
         'record_types': RecordMeta.RECORD_TYPES,
+        'tax_classifications': RecordMeta.TAX_CLASSIFICATIONS,
         'join_operators': TransactionRuleSet.join_operator_choices,
         'events': Event.objects.all(),
         'properties': Property.objects.all(),

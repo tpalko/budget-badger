@@ -157,7 +157,10 @@
         
         transactionRuleFieldHandler(e);
     }
-
+    /**
+     * For given formDiv, attach event listeners for all found ".minusform", "select", and "input"
+     * including 'click', 'blur', 'change', and 'keyup'
+     */
     function setRuleFormListeners(formDiv) {
 
         var minusform = formDiv.querySelector(".minusform");
@@ -177,7 +180,9 @@
             el.addEventListener('change', handleRuleFormModified);
         })
     }
-
+    /**
+     * calls setRuleFormListeners for all "#ruleform .formdiv" and "#ruleset_form" elements
+     */
     function setupRecordMatcherResultsEvents() {
 
         form = document.querySelector("#ruleform");

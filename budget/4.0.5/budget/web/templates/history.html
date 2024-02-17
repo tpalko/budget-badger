@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+
+{% block content %}
+
+<div class="row">
+    <div class="col-16">
+        <h3>History</h3>
+
+        <canvas id="monthly" width="400" height="100" aria-label="Monthly By Category" role="img">
+            <p>Oh, so sad</p>
+        </canvas>
+    </div>  
+</div>
+
+{% endblock %}
+
+{% block script %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script language="javascript">
+
+    // const data = {
+    //     labels: ['A', 'B', 'C'],
+    //     datasets: [
+    //         {
+    //         label: 'Dataset 1',
+    //         data: [1, 2, 3],
+    //         borderColor: '#36A2EB',
+    //         backgroundColor: '#9BD0F5',
+    //         },
+    //         {
+    //         label: 'Dataset 2',
+    //         data: [2, 3, 4],
+    //         borderColor: '#FF6384',
+    //         backgroundColor: '#FFB1C1',
+    //         }
+    //     ]
+    // };
+
+    const data = {{ data|safe }};
+    const months = {{ months|safe }};
+
+    document.addEventListener('DOMContentLoaded', (e) => {
+
+        const myChart = new Chart(document.getElementById("monthly"), {
+            type: 'bar',
+            data: data,
+            options: {
+                scales: {
+                    x: {
+                        stacked: true
+                    },
+                    y: {
+                        stacked: true
+                    }
+                },                
+                onClick: (e, els, chart) => {                    
+                    console.log(els);
+                    console.log(chart);                    
+                    document.location = '/account/1/sorter/?month=' + months[els[0].index];
+                }
+            }
+        });
+
+    });
+
+</script>
+
+{% endblock %}

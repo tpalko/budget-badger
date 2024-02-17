@@ -17,19 +17,17 @@
         <div>
             <a class="button" href="{% url "regroup_manual_records" tenant_id=1 %}">Regroup Records</a>        
             <a href="{% url "transactionruleset_create" tenant_id=1 %}">create new rule set</a>
+            <button id="toggle-extended-monthly-stats">hide/show extended monthly stats</button>
         </div>
 
     </div>    
 </div>
 <div class="row">
     <div class="col-7">
-        <h3>Showing {{ credit_rulesets|length }} credit rule sets</h3>
-        {% include "_transactionrulesets_list_table.html" with direction="credit" table=credit_rulesets stats=credit_stats %}
-        <h3>Showing {{ nostat_rulesets|length }} no stats rule sets</h3>
+        {% include "_transactionrulesets_list_table.html" with direction="credit" table=credit_rulesets stats=credit_stats %}        
         {% include "_transactionrulesets_list_table.html" with table=nostat_rulesets %}
     </div>
-    <div class="col-7 col-offset-1">
-        <h3>Showing {{ debit_rulesets|length }} debit rule sets</h3>
+    <div class="col-7 col-offset-1">        
         {% include "_transactionrulesets_list_table.html" with direction="debit" table=debit_rulesets stats=debit_stats %}
     </div>
 </div>
@@ -40,7 +38,19 @@
 
 <script language="javascript">
 
-    
+    document.addEventListener("DOMContentLoaded", (e) => {
+        
+        document.querySelector("button#toggle-extended-monthly-stats").addEventListener("click", (e) => {
+            document.querySelectorAll("div.extended-monthly-stats").forEach((e, i) => {
+                if (e.style.display == "none") {
+                    e.style.display = "block";
+                } else {
+                    e.style.display = 'none';
+                }                
+            })
+        })
+        
+    });
 
 
 </script>

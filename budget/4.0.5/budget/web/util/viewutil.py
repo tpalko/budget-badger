@@ -1,13 +1,14 @@
+import math 
 import json 
 import re
 import base64
-from web.util.stats import nearest_whole
 from web.util.recordgrouper import RecordGrouper
 from web.util.modelutil import TransactionTypes
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from web.util.csvparse import get_record_dicts_and_raw_data_lines_from_csv
 from web.util.modelutil import record_hash
+from web.util.stats import get_all_stats_for_rule_set
 from web.models import Account, CreditCard, UploadedFile, Record, Transaction, RecordFormat, TransactionRuleSet, TransactionRule, ProtoTransaction
 from web.forms import RecordForm, TransactionRuleForm, TransactionRuleSetForm, new_transaction_rule_form_set
 
@@ -26,12 +27,14 @@ class Searches(Enum):
     SEARCH_TX_CC_PAYMENTS = 'tx_cc_payments'
     SEARCH_ALL_CREDITS = 'all_credits'
     SEARCH_ALL_DEBITS = 'all_debits'
+    SEARCH_LARGE_AMOUNTS = 'large_amounts'
 
 SEARCH_OPTIONS = [
     ("credit card and account credits", Searches.SEARCH_CC_ACCT_CREDITS.value,),
     ("transfers and credit card payments", Searches.SEARCH_TX_CC_PAYMENTS.value,),
     ("all credits", Searches.SEARCH_ALL_CREDITS.value,),
-    ("all debits", Searches.SEARCH_ALL_DEBITS.value,)
+    ("all debits", Searches.SEARCH_ALL_DEBITS.value,),
+    ("large amounts", Searches.SEARCH_LARGE_AMOUNTS.value,)
 ]
 
 SEARCH_QUERIES = {
@@ -54,8 +57,21 @@ SEARCH_QUERIES = {
             | Q(description__iregex=r"thank\s?you")
     ) & Q(amount__lt=0),
     Searches.SEARCH_ALL_CREDITS.value: Q(amount__gt=0),
-    Searches.SEARCH_ALL_DEBITS.value: Q(amount__lt=0)
+    Searches.SEARCH_ALL_DEBITS.value: Q(amount__lt=0),
+    Searches.SEARCH_LARGE_AMOUNTS.value: Q(amount__gte=400) | Q(amount__lte=-400)
 }
+
+#wholes = [1,2,3,5,10,15,20,50,80,85,90,95,97,98,99,100]
+wholes = [4,5,6,7,8,10,12,20,30,40,50,60,70,80,90,100]
+def nearest_whole(val):
+    lastdiff = 101
+    choice_w = None 
+    for w in wholes:
+        diff = abs(w - val)
+        if diff < lastdiff:
+            lastdiff = diff 
+            choice_w = w
+    return choice_w
 
 def fuzzy_comparator(obj, all_fields, fuzzy_fields):
     our_fields = { f: getattr(obj, f) for f in all_fields }
@@ -199,6 +215,12 @@ def init_transaction_rule_forms(request, transactionruleset_id=None):
         TransactionRuleFormSet = new_transaction_rule_form_set(extra=1)
         transactionrule_formset = TransactionRuleFormSet(queryset=TransactionRule.objects.none())
 
+        if 'month' in request.GET:
+            month = request.GET['month']
+            transactionrule_formset.forms[0].inclusion = 'filter'
+            transactionrule_formset.forms[0].record_field = 'transaction_date'
+            # , 'record_field':'transaction_date', 'match_operator':'>', 'match_value':month}))
+
     if request.method == "POST":
         
         # form init + populate 
@@ -254,7 +276,7 @@ def handle_transaction_rule_form_request(request, transactionruleset_id=None):
 
 def refresh_prototransaction(transactionruleset):
 
-    stats = RecordGrouper.get_all_stats_for_rule_set(transactionruleset)
+    stats = get_all_stats_for_rule_set(transactionruleset)
 
     # records = transactionruleset.records(refresh=True)
     
@@ -299,6 +321,7 @@ def get_type_display_brackets(hold_type_brackets, start_date, last_date):
 
         segments = {
             'name': hold_type_brackets[a]['name'],
+            'account_number': hold_type_brackets[a]['account_number'],
             'segments': []
         }
 
@@ -356,11 +379,13 @@ def coverage_brackets():
     return { 
         n.id: { 
             'name': n.name, 
+            'account_number': n.account_number,
             'brackets': n.continuous_record_brackets() 
         } for n in accounts 
     }, { 
         n.id: { 
             'name': n.name, 
+            'account_number': n.account_number,
             'brackets': n.continuous_record_brackets() 
         } for n in cards 
     }
@@ -373,7 +398,7 @@ def get_ruleset_breakout(transactionrulesets_manual):
 
     for rs in transactionrulesets_manual:
 
-        if not rs.prototransaction_safe():
+        if not rs.prototransaction_safe() or not rs.prototransaction.is_active():
             nostat_rulesets.append(rs)
             continue 
 
@@ -435,11 +460,14 @@ def get_ruleset_breakout(transactionrulesets_manual):
 
     return {
         'credit_stats': ruleset_stats(credit_rulesets),
-        'credit_rulesets': sorted(credit_rulesets, key=lambda t: t.priority, reverse=False),
+        'credit_rulesets': _ruleset_by_criticality(sorted(credit_rulesets, key=lambda t: t.priority, reverse=False)),
         'debit_stats': ruleset_stats(debit_rulesets),
-        'debit_rulesets': sorted(debit_rulesets, key=lambda t: t.priority, reverse=False),        
-        'nostat_rulesets': sorted(nostat_rulesets, key=lambda t: t.priority, reverse=False),    
+        'debit_rulesets': _ruleset_by_criticality(sorted(debit_rulesets, key=lambda t: t.priority, reverse=False)),        
+        'nostat_rulesets': _ruleset_by_criticality(sorted(nostat_rulesets, key=lambda t: t.priority, reverse=False)),    
     }
+
+def _ruleset_by_criticality(ruleset):
+    return { c[1]: [ r for r in ruleset if r.prototransaction.criticality == c[0] ] for c in TransactionTypes.criticality_choices }
 
 def ruleset_stats(rulesets):
     
@@ -559,12 +587,14 @@ def _process_records(records, csv_date_format, flow_convention):
     return processed_records 
 
 def process_file(uploadedfile):
+    '''Processes the provided file and saves the resulting records'''
     details = process_uploaded_file(uploadedfile)    
     logger.info(f'Reprocessing {uploadedfile.original_filename}/{uploadedfile.account_name()} found {len(details["records"])} records')    
     logger.info(f'Saving {len(details["records"])} records from reprocessing uploaded file {uploadedfile.original_filename}')
     save_processed_records(details['records'], uploadedfile)
 
 def cleanup_file(uploadedfile):
+    '''Deletes all database records associated with the provided file'''
     db_records = uploadedfile.records.all()
     logger.warning(f'Deleting {len(db_records)} from {uploadedfile.account_name()} -- {len(db_records)} currently in database')
     db_records.delete()
@@ -605,6 +635,8 @@ def process_uploaded_file(uploaded_file):
         # -- the existence of a composite object with the record information + the raw data line exists only between these
         # -- two function calls.. after _process_records() we have pure Record type dicts
         raw_records = get_record_dicts_and_raw_data_lines_from_csv(file_contents, this_format.csv_columns.split(','), uploaded_file.header_included)
+        if len(raw_records) == 0:
+            raise Exception(f'No records found in {uploaded_file.name}')
         records = _process_records(raw_records, this_format.csv_date_format, this_format.flow_convention)
     except:      
         error_msg = f'{sys.exc_info()[0]} {sys.exc_info()[1]}'

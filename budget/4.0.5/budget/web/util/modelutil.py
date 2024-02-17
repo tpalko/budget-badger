@@ -19,6 +19,11 @@ class TransactionTypes(object):
     TRANSACTION_TIMING_CHAOTIC_RARE = 'chaotic_rare' # rare - no identifiable period and more often than not longer than 45 days between
     TRANSACTION_TIMING_SINGLE = 'single' # - one record
 
+    CRITICALITY_TAXES = 'taxes'
+    CRITICALITY_NECESSARY = 'necessary'
+    CRITICALITY_FLEXIBLE = 'flexible'
+    CRITICALITY_OPTIONAL = 'optional'
+
     # -- transaction types are closely related to record types
     # -- generally, a rule set should-ish only match records of a single record type
     # -- and the prototransaction for that rule set would then be that type
@@ -71,7 +76,8 @@ class TransactionTypes(object):
         282: PERIOD_SEVEN_TO_TWELVE_MONTHS,
         365: PERIOD_YEARLY,
         565: PERIOD_THIRTEEN_TO_TWENTY_THREE_MONTHS,
-        730: PERIOD_BIENNIALLY
+        730: PERIOD_BIENNIALLY,
+        761: PERIOD_INACTIVE
     }    
 
     AVERAGING_PERIOD_LOOKUP = {
@@ -103,6 +109,7 @@ class TransactionTypes(object):
         760: PERIOD_INACTIVE 
     }
 
+    criticality_choices = choiceify([CRITICALITY_TAXES, CRITICALITY_NECESSARY, CRITICALITY_FLEXIBLE, CRITICALITY_OPTIONAL])
     timing_choices = choiceify([TRANSACTION_TIMING_PERIODIC, TRANSACTION_TIMING_CHAOTIC_FREQUENT, TRANSACTION_TIMING_CHAOTIC_RARE, TRANSACTION_TIMING_SINGLE])
     period_choices = choiceify([PERIOD_UNKNOWN, PERIOD_DAILY, PERIOD_WEEKLY, PERIOD_BIWEEKLY, PERIOD_MONTHLY, PERIOD_QUARTERLY, PERIOD_SEMIANNUALLY, PERIOD_YEARLY])
     transaction_type_choices = choiceify([TRANSACTION_TYPE_SINGLE, TRANSACTION_TYPE_INCOME, TRANSACTION_TYPE_UTILITY, TRANSACTION_TYPE_DEBT, TRANSACTION_TYPE_CREDITCARD, TRANSACTION_TYPE_UNKNOWN])
