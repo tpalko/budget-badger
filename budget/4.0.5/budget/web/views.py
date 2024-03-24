@@ -228,7 +228,7 @@ def recordmatcher(request, tenant_id):
 
             # -- yes, we're recreating the TransactionRuleSet.records method here, we don't have actual objects
             # -- sort of.. just the forms that hold the fields for the objects
-            filters = [ TransactionRuleLogic(TransactionRule(**form.cleaned_data)) for form in transactionrule_formset ]
+            filters = [ TransactionRule(**form.cleaned_data) for form in transactionrule_formset ]
             record_queryset = records_from_rules(filters, join_operator)
             
             response['data']['ruleset_evaluated'] = f' {join_operator} '.join([ str(f.instance) for f in transactionrule_formset.forms ]) + f' at priority {priority}'
@@ -263,6 +263,7 @@ def recordmatcher(request, tenant_id):
                     'records': pared_recordset,
                     'record_types': RecordMeta.RECORD_TYPES,
                     'tax_classifications': RecordMeta.TAX_CLASSIFICATIONS,
+                    'tax_periods': RecordMeta.TAX_PERIODS,
                     'join_operators': TransactionRuleSet.join_operator_choices,
                     'events': Event.objects.all(),
                     'properties': Property.objects.all(),
@@ -899,6 +900,8 @@ def update_record_meta(request, tenant_id):
             
             response['data']['original_record_type'] = record_meta.record_type 
             response['data']['original_tax_classification'] = record_meta.tax_classification
+            response['data']['original_tax_year'] = record_meta.tax_year
+            response['data']['original_tax_period'] = record_meta.tax_period
             response['data']['original_description'] = record_meta.description 
             response['data']['original_event_id'] = record_meta.event_id
             response['data']['original_vehicle_id'] = record_meta.vehicle_id
@@ -909,6 +912,8 @@ def update_record_meta(request, tenant_id):
 
             record_type = request.POST['record_type']
             tax_classification = request.POST['tax_classification']
+            tax_year = request.POST['tax_year']
+            tax_period = request.POST['tax_period']
             description = request.POST['description']
             event_id = request.POST['event_id']
             vehicle_id = request.POST['vehicle_id']
@@ -932,18 +937,22 @@ def update_record_meta(request, tenant_id):
             if record_meta:   
                 record_meta.record_type = record_type
                 record_meta.tax_classification = tax_classification
+                record_meta.tax_year = tax_year
+                record_meta.tax_period = tax_period
                 record_meta.description = description 
                 record_meta.event_id = event_id
                 record_meta.vehicle_id = vehicle_id
                 record_meta.property_id = property_id
                 record_meta.save()
-                update_msgs.append(f'record/meta {record.id}/{record_meta.id} type:{record_type},tax:{tax_classification},desc:{description},event:{event_id},vehicle:{vehicle_id},property:{property_id}')
+                update_msgs.append(f'record/meta {record.id}/{record_meta.id} type:{record_type},tax:{tax_classification}/{tax_year}/{tax_period},desc:{description},event:{event_id},vehicle:{vehicle_id},property:{property_id}')
 
             if assoc_record_meta: # and record_type == RecordMeta.RECORD_TYPE_INTERNAL:         
                 assoc_record_meta.record_type = record_type 
                 assoc_record_meta.tax_classification = tax_classification
+                assoc_record_meta.tax_year = tax_year
+                assoc_record_meta.tax_period = tax_period
                 assoc_record_meta.save()
-                update_msgs.append(f'assoc record/meta {assoc_record.id}/{assoc_record_meta.id} type:{record_type} tax:{tax_classification}')
+                update_msgs.append(f'assoc record/meta {assoc_record.id}/{assoc_record_meta.id} type:{record_type} tax:{tax_classification}/{tax_year}/{tax_period}')
 
             response['messages'].append("/".join(update_msgs))
 
@@ -1119,7 +1128,7 @@ def records(request, tenant_id):
         if hide_accounted:
             c['records'] = [ r for r in c['records'] if str(r.id) not in record_rules ]
     
-    show_record_columns = ['id', 'transaction_date', 'meta_record_type', 'description', 'amount', 'extra_fields']
+    show_record_columns = ['id', 'uploaded_file.id', 'transaction_date', 'meta_record_type', 'description', 'amount', 'extra_fields']
     
     template_data = {
         'hide_accounted': hide_accounted,
@@ -1195,7 +1204,7 @@ def files(request, tenant_id):
                     #     logger.warning(message)
                     #     traceback.print_tb(sys.exc_info()[2])
 
-                    return redirect('records', tenant_id=tenant_id)
+                    return redirect('files', tenant_id=tenant_id)
 
                 except:
                     message = f'{sys.exc_info()[0].__name__}: {sys.exc_info()[1]}: This object could not be processed, therefore we are deleting the associated uploaded file {uploadedfile.id}'
@@ -1216,6 +1225,54 @@ def files(request, tenant_id):
     }
 
     return render(request, "files.html", template_data)
+
+def taxes(request, tenant_id, tax_year=None):
+
+    if not tax_year:
+        tax_year = datetime.now().year
+
+    tax_year_start = f'{tax_year}-01-01'
+    tax_year_end = f'{int(tax_year)+1}-04-01'
+
+    tax_records = Record.objects.filter(
+        (~Q(meta_tax_classification="") \
+            | Q(meta_description__icontains="tax") \
+            | Q(description__icontains="tax")) \
+        & (Q(meta_tax_year=tax_year) | (Q(meta_tax_year="") & Q(transaction_date__gt=tax_year_start) & Q(transaction_date__lt=tax_year_end)))
+    ).order_by('meta_tax_classification', 'meta_tax_year', 'meta_tax_period')
+
+    
+    tax_types = set([ r.meta_tax_classification for r in tax_records ])
+    properties = set([ r.record_meta().property for r in tax_records ])    
+    tax_records_by_year = {'income': {}, 'property': { p.name: [] for p in properties if p }, 'other': {}}
+
+    for tt in tax_types:
+        filtered_records = [ t for t in tax_records if t.meta_tax_classification == tt ]
+        key = tt or "unclassified"
+        if tt.find('income-') == 0:
+            tax_records_by_year['income'][key] = filtered_records
+            tax_records_by_year['income'][key] = sorted(tax_records_by_year['income'][key], key=lambda a: a.meta_tax_period or datetime.strftime(a.transaction_date, "%Y-%m-%d"))
+            # tax_records_by_year[tt] = sorted(tax_records_by_year[tt], key=lambda a: a.record_meta().property.name if a.record_meta().property else "")
+        elif tt.find('property-') == 0:            
+            for r in filtered_records:
+                tax_records_by_year['property'][r.record_meta().property.name].append(r)
+    
+    income_totals = { p: sum([ r.amount for r in tax_records_by_year['income'][p] ]) for p in tax_records_by_year['income'] }
+    property_totals = { p: sum([ r.amount for r in tax_records_by_year['property'][p] ]) for p in tax_records_by_year['property'] }
+    
+    income_totals['all'] = sum([ income_totals[p] for p in income_totals ])
+    property_totals['all'] = sum([ property_totals[p] for p in property_totals ])
+
+    context = {
+        'tax_year': tax_year, 
+        'prev_tax_year': int(tax_year)-1, 
+        'next_tax_year': int(tax_year)+1, 
+        'records_by_year': tax_records_by_year,
+        'totals': { 'income': income_totals, 'property': property_totals },
+    }
+
+    return render(request, "taxes.html", context)
+
 
 def coverage(request, tenant_id):
 

@@ -163,7 +163,7 @@ class Vehicle(BaseModel):
     
 #     return Record.budgeting.filter(meta_accounted_at=priority)
 
-def records_from_rules(rule_logics, join_operator):
+def records_from_rules(transaction_rules, join_operator):
     
     '''
     See RecordGrouper.filter_accounted_records for some insight on this
@@ -172,6 +172,8 @@ def records_from_rules(rule_logics, join_operator):
     qset = None 
     this_qs = []
 
+    rule_logics = [ TransactionRuleLogic(tr) for tr in transaction_rules ]
+
     for logic in rule_logics:
 
         # -- 'full_description' must be digested - this field doesn't exist, it's just a shortcut for "all description fields"
@@ -179,8 +181,18 @@ def records_from_rules(rule_logics, join_operator):
         # -- to capture faithfully, but if the user says 'AND', the logic is broken, until a parentheses feature is built
         if logic.tr.record_field == "full_description":
             new_logics = [ 
-                TransactionRuleLogic(TransactionRule(record_field='description', inclusion=logic.tr.inclusion, match_operator=logic.tr.match_operator, match_value=logic.tr.match_value)),
-                TransactionRuleLogic(TransactionRule(record_field='meta_description', inclusion=logic.tr.inclusion, match_operator=logic.tr.match_operator, match_value=logic.tr.match_value))
+                TransactionRuleLogic(TransactionRule(
+                    record_field='description', 
+                    inclusion=logic.tr.inclusion, 
+                    match_operator=logic.tr.match_operator, 
+                    match_value=logic.tr.match_value
+                )),
+                TransactionRuleLogic(TransactionRule(
+                    record_field='meta_description', 
+                    inclusion=logic.tr.inclusion, 
+                    match_operator=logic.tr.match_operator, 
+                    match_value=logic.tr.match_value
+                ))
             ]
             for l in new_logics:
                 this_qs.append(l.key_arg_dict())
@@ -190,7 +202,10 @@ def records_from_rules(rule_logics, join_operator):
     # logger.debug(f'Q dicts: {this_qs}')
 
     for i, qdict in enumerate(this_qs):
-        q = Q(**qdict)
+        
+        q = Q(**qdict['qval'])
+        q = ~q if qdict['qnot'] else q 
+
         if i == 0:
             qset = q
         else:
@@ -224,8 +239,7 @@ class TransactionRuleSet(BaseModel):
             logger.debug(f'Refetching records for transactionruleset {self.id}')
             
             ## sorter page: 23s cold, 14s subsequent
-            filters = [ TransactionRuleLogic(tr) for tr in self.transactionrules.all() ]
-            self._records = records_from_rules(filters, self.join_operator)
+            self._records = records_from_rules(self.transactionrules.all(), self.join_operator)
 
             ## sorter page: 13s cold, 9s subsequent
             # self._records = records_from_accounted_priority(self.priority)
@@ -329,13 +343,16 @@ class TransactionRuleLogic(object):
         self.fn_arg = self.tr.match_value
 
     def key_arg_dict(self):
-        return {self.fn_key: self.fn_arg}
+        return { 
+            'qval': { self.fn_key: self.fn_arg },
+            'qnot': self.operator_fn == TransactionRule.INCLUSION_EXCLUDE
+        }
 
-    def apply(self, query_set):
-        if self.operator_fn == TransactionRule.INCLUSION_FILTER:
-            return query_set.filter(**self.key_arg_dict())
-        elif self.operator_fn == TransactionRule.INCLUSION_EXCLUDE:
-            return query_set.exclude(**self.key_arg_dict())
+    # def apply(self, query_set):
+    #     if self.operator_fn == TransactionRule.INCLUSION_FILTER:
+    #         return query_set.filter(**self.key_arg_dict())
+    #     elif self.operator_fn == TransactionRule.INCLUSION_EXCLUDE:
+    #         return query_set.exclude(**self.key_arg_dict())
 
 class TransactionRule(BaseModel):
     '''A building block for TransactionRuleSet'''
@@ -436,7 +453,7 @@ class ProtoTransaction(BaseModel):
     def average_for_month(self, direction):
         if direction in self.stats and 'average_for_month' in self.stats[direction]:
             return self.stats[direction]['average_for_month']
-        return None
+        return 0
 
     def average_for_period(self, direction):
         if direction in self.stats and 'average_for_period' in self.stats[direction]:
@@ -748,8 +765,11 @@ class RecordMeta(BaseModel):
     TAX_CLASSIFICATION_PROPERTY_SCHOOL      = 'property-school'
     TAX_CLASSIFICATION_INCOME_FEDERAL       = 'income-federal'
     TAX_CLASSIFICATION_INCOME_STATE         = 'income-state'
-    TAX_CLASSIFICATION_INCOME_CITY          = 'income-city'
-    TAX_CLASSIFICATION_INCOME_LOCAL         = 'income-local'
+    TAX_CLASSIFICATION_INCOME_CITY          = 'income-city'     # deprecated
+    TAX_CLASSIFICATION_INCOME_LOCAL         = 'income-local'    # deprecated
+    TAX_CLASSIFICATION_INCOME_LEI           = 'income-local-earned-income'  # local 
+    TAX_CLASSIFICATION_INCOME_LST           = 'income-local-services'       # city 
+    TAX_CLASSIFICATION_INCOME_PET           = 'income-payroll-expense'      # city 
     TAX_CLASSIFICATION_TRANSFER             = 'transfer'
     TAX_CLASSIFICATION_CAPITAL_GAINS        = 'capital-gains'
 
@@ -762,18 +782,36 @@ class RecordMeta(BaseModel):
         TAX_CLASSIFICATION_INCOME_STATE,
         TAX_CLASSIFICATION_INCOME_CITY,
         TAX_CLASSIFICATION_INCOME_LOCAL,
+        TAX_CLASSIFICATION_INCOME_LEI,
+        TAX_CLASSIFICATION_INCOME_LST,
+        TAX_CLASSIFICATION_INCOME_PET,
         TAX_CLASSIFICATION_TRANSFER,
         TAX_CLASSIFICATION_CAPITAL_GAINS
+    ]
+
+    TAX_PERIOD_QUARTER_Q1   = 'Q1'
+    TAX_PERIOD_QUARTER_Q2   = 'Q2'
+    TAX_PERIOD_QUARTER_Q3   = 'Q3'
+    TAX_PERIOD_QUARTER_Q4   = 'Q4'
+
+    TAX_PERIODS = [
+        TAX_PERIOD_QUARTER_Q1,
+        TAX_PERIOD_QUARTER_Q2,
+        TAX_PERIOD_QUARTER_Q3,
+        TAX_PERIOD_QUARTER_Q4
     ]
 
     extra_fields_hash = models.CharField(max_length=32, null=True)
     core_fields_hash = models.CharField(max_length=32, null=True)
     raw_data_line_hash = models.CharField(max_length=32, null=True)
+
     record_type = models.CharField(max_length=15, null=False, choices=choiceify(RECORD_TYPES), default=RECORD_TYPE_UNKNOWN)
     property = models.ForeignKey(to=Property, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     vehicle = models.ForeignKey(to=Vehicle, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     event = models.ForeignKey(to=Event, related_name='recordmetas', on_delete=models.SET_NULL, null=True)
     tax_classification = models.CharField(max_length=30, null=True, choices=choiceify(TAX_CLASSIFICATIONS))
+    tax_year = models.CharField(max_length=10, null=False, blank=True)
+    tax_period = models.CharField(max_length=10, null=True, choices=choiceify(TAX_PERIODS))
     target = models.CharField(max_length=50, null=True)
     description = models.CharField(max_length=255, blank=True, null=False)
     detail = models.TextField(null=False, blank=True)
@@ -811,7 +849,9 @@ class RecordTypeManager(models.Manager):
             .annotate(meta_event_id=meta_join.values('event_id')) \
             .annotate(meta_vehicle_id=meta_join.values('vehicle_id')) \
             .annotate(meta_property_id=meta_join.values('property_id')) \
-            .annotate(meta_tax_classification=meta_join.values('tax_classification'))
+            .annotate(meta_tax_classification=meta_join.values('tax_classification')) \
+            .annotate(meta_tax_year=meta_join.values('tax_year')) \
+            .annotate(meta_tax_period=meta_join.values('tax_period'))
 
         # .annotate(meta_accounted_at=meta_join.values('accounted_at')) \
 
@@ -901,6 +941,10 @@ class Record(BaseModel):
         # -- represented by that RecordMeta will need to do the same thing - so we must each time 
         # -- we improve create a new RecordMeta and copy the fields from the old one.
         # -- this wasn't wordy enough, really 
+        # -- march 2024 - another way to word this is that each time we improve the level of distinction
+        # -- the fingerprint has, narrowing the set, we cannot know exactly how RecordMetas will get 
+        # -- redistributed. some will get orphaned, some might even get merged. it's dirty. so starting
+        # -- with a fresh set of RecordMetas deliberately removes us from that noise
 
         if self.extra_fields is None:
             self.extra_fields = {}
@@ -961,7 +1005,8 @@ class Record(BaseModel):
             #     core_meta = RecordMeta.objects.create(**meta_copy)
             #     logger.info(f'missing core meta record {core_meta.id} created')
 
-        meta_copy_fields = ['record_type', 'property_id', 'vehicle_id', 'event_id', 'target', 'description', 'detail']
+        # -- 3/20/24 - noticed 'tax_classification' was missing from this list.. did this get added later, when this code was obsolete?
+        meta_copy_fields = ['record_type', 'property_id', 'vehicle_id', 'event_id', 'tax_classification', 'target', 'description', 'detail']
 
         core_meta_copy = {}
         if core_meta:            

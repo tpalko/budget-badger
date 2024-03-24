@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% load budget_tags %}
+
+{% block content %}
+
+<h2>Taxes {{ tax_year }}</h2>
+
+<a href="{% url "taxes" tenant_id=1 tax_year=prev_tax_year %}">{{ prev_tax_year }}</a>
+<a href="{% url "taxes" tenant_id=1 tax_year=next_tax_year %}">{{ next_tax_year }}</a>
+
+<div class="col-16">
+
+{% for taxtype in records_by_year %}
+
+<div class="col-16" style="margin: 1em 0em;">
+
+    <h2 style="margin: 0em 0em 0.5em 0em;">{{ taxtype }}</h2>
+    All {{ taxtype }}: {{ totals|lookup:taxtype|lookup:"all" }}
+    
+    {% for type_entry in records_by_year|lookup:taxtype %}
+
+    <h3>{{ type_entry }}</h3>
+
+    <div class="col-16">
+        <table width="100%">       
+            <tr>        
+                <th width="5%">tax year</th>
+                <th width="10%">tax class.</th>        
+                <th width="5%">tax period</th>
+                <th width="10%">date</th>
+                <th width="5%">amount</th>
+                <th width="25%">description</th>
+                <th width="5%">property</th>
+            </tr>
+            {% for record in records_by_year|lookup:taxtype|lookup:type_entry %}
+            <tr>    
+                <td>{{ record.meta_tax_year }}</td>
+                <td>{{ record.meta_tax_classification }}</td>    
+                <td>{{ record.meta_tax_period }}</td>
+                <td>{{ record.transaction_date }}</td>    
+                <td>{{ record.amount }}</td>
+                <td>{{ record.meta_description }} / {{ record.description }}</td>    
+                <td>{{ record.record_meta.property.name }}</td>
+            </tr>
+            {% endfor %}
+            <tr style="font-weight: bold;">
+                <td colspan="4" style="text-align: right;">Total:</td>
+                <td>{{ totals|lookup:taxtype|lookup:type_entry }}</td>
+                <td colspan="2"></td>
+            </tr>
+        
+        </table>
+    </div>
+
+    {% endfor %}
+
+    
+</div>
+
+{% endfor %}
+
+</div>
+
+{% endblock %}
+
+{% block script %}
+
+{% endblock %}

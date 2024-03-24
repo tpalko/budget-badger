@@ -57,22 +57,26 @@ def budget_context(request_context):
             'url': format_url('history'),
             'display': 'History'
         },        
+        { 
+            'url': format_url('taxes'),
+            'display': 'Taxes'
+        },        
         # { 
         #     'url': format_url('transactionrulesets_auto'),
         #     'display': 'Auto Groups'
         # },
-        { 
-            'url': format_url('transactions'),
-            'display': 'Transactions'
-        },
-        { 
-            'url': format_url('projection'),
-            'display': 'Projection'
-        },
-        { 
-            'url': format_url('settings'),
-            'display': 'Settings'
-        },
+        # { 
+        #     'url': format_url('transactions'),
+        #     'display': 'Transactions'
+        # },
+        # { 
+        #     'url': format_url('projection'),
+        #     'display': 'Projection'
+        # },
+        # { 
+        #     'url': format_url('settings'),
+        #     'display': 'Settings'
+        # },
     ]
 
     # -- changes here need to match shared_context in views.recordmatcher
@@ -81,6 +85,7 @@ def budget_context(request_context):
         'menu': menu,
         'record_types': RecordMeta.RECORD_TYPES,
         'tax_classifications': RecordMeta.TAX_CLASSIFICATIONS,
+        'tax_periods': RecordMeta.TAX_PERIODS,
         'join_operators': TransactionRuleSet.join_operator_choices,
         'events': Event.objects.all(),
         'properties': Property.objects.all(),

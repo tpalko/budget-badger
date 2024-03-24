@@ -81,22 +81,30 @@ def format_currency(val):
 @register.filter()
 def lookup(obj, key):
 	# logger.debug(f'looking up {key} in object')
+	keys = str(key).split('.')	
 	val = None 
-	try:
-		if type(obj) == list:
-			val = [ o.__getattribute__(str(key)) for o in obj ]
-		elif type(obj) == dict:			
-			val = obj[str(key)]
-			# val = obj.__getattribute__(str(key))
-		else:			
-			val = obj.__getattribute__(str(key))
-			
-		# if key == 'date':
-		# 	val = datetime.strftime(val, "%n/%d/%y")
-	except KeyError as ke:
-		pass
-	except AttributeError as ae:
-		pass
+
+	for key in keys:
+		if val != None:
+			obj = val 
+		try:
+			# -- map
+			if type(obj) == list:
+				val = [ o.__getattribute__(str(key)) for o in obj ]
+			# -- dict value
+			elif type(obj) == dict:			
+				val = obj[str(key)]
+				# val = obj.__getattribute__(str(key))
+			# -- Object value 
+			else:			
+				val = obj.__getattribute__(str(key))
+				
+			# if key == 'date':
+			# 	val = datetime.strftime(val, "%n/%d/%y")
+		except KeyError as ke:
+			pass
+		except AttributeError as ae:
+			pass
 	return val 
 
 @register.filter()

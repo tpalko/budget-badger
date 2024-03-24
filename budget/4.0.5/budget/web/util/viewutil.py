@@ -9,6 +9,7 @@ from django.db.models import Q
 from web.util.csvparse import get_record_dicts_and_raw_data_lines_from_csv
 from web.util.modelutil import record_hash
 from web.util.stats import get_all_stats_for_rule_set
+from web.util.numbers import _floatify
 from web.models import Account, CreditCard, UploadedFile, Record, Transaction, RecordFormat, TransactionRuleSet, TransactionRule, ProtoTransaction
 from web.forms import RecordForm, TransactionRuleForm, TransactionRuleSetForm, new_transaction_rule_form_set
 
@@ -527,9 +528,6 @@ def get_records_template_data(filtered_records):
         }
     
     return template_data
-
-def _floatify(val):
-    return float(str(val).replace('$', '').replace(',', '').replace('"', '') or 0.00)
 
 def _must_amount(record, flow_convention):
 

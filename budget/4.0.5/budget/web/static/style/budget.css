@@ -222,7 +222,7 @@ tr.ruleset-status-unknown {
 }
 
 #record_matcher_results {
-	/* font-size: 0.8em; */
+	font-size: 0.8em;
 }
 
 form.record_meta,

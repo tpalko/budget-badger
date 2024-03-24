@@ -15,7 +15,7 @@
             <tr title="{{ record.extra_fields }}">
                 <td>{{ record.id }}</td>
                 <td>{{ record.transaction_date }}</td>
-                <td>{{ record.uploaded_file.account_name }}</td>
+                <td>{{ record.uploaded_file.account_name }} {{ record.uploaded_file.account_number }}</td>
                 <td>{{ record.full_description }}<br />#{{ record.extra_fields.ref }}</td>
                 <td>{{ record.amount }}</td>                
                 <td>
